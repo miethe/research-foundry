@@ -246,18 +246,13 @@ def test_receipt_has_no_free_text_detail_field() -> None:
     assert "reason_code" not in action_props
 
 
-def test_reason_code_vocabulary_is_the_frozen_19_code_closed_set() -> None:
-    """PRD §6.5's 4 families, 19 total safe reason codes — verbatim.
-
-    Per gpt-5.6-sol P1 audit finding #15, only the packet family (5 codes)
-    is directly caller-visible on this schema, as ``block_reason`` — it
-    describes the submitted packet's own structure back to its own
-    submitter, not a cross-workspace fact. The other 14 codes (source,
-    citation, candidate) remain the frozen closed vocabulary contract §2.3
-    documents, but they no longer appear anywhere on THIS schema — they are
-    recorded only in the access-controlled audit record an ``audit_ref``
-    resolves against (contract §4.3, §4.6), which is intentionally not a
-    schema this task owns (its shape is a later-phase open item)."""
+def test_reason_code_vocabulary_matches_the_closed_set() -> None:
+    """Staging failures extend the private audit vocabulary, not public receipts."""
+    from research_foundry.services.external_research_interchange import (
+        CANDIDATE_REASON_CODES,
+        PACKET_REASON_CODES,
+        SOURCE_REASON_CODES,
+    )
 
     receipt_schema = SchemaRegistry().get("external_research_import_receipt")
     block_reason_codes = set(receipt_schema["properties"]["block_reason"]["enum"])
@@ -287,6 +282,10 @@ def test_reason_code_vocabulary_is_the_frozen_19_code_closed_set() -> None:
         "basis_incomplete",
         "relation_invalid",
         "verification_failed",
+        "target_run_not_found",
+        "promotion_invalid",
+        "promotion_io_failed",
+        "promotion_failed",
         "cross_workspace_denied",
     }
 
@@ -300,7 +299,10 @@ def test_reason_code_vocabulary_is_the_frozen_19_code_closed_set() -> None:
     assert action_props["audit_ref"]["type"] == ["string", "null"]
 
     all_codes = expected_packet | expected_source | expected_citation | expected_candidate
-    assert len(all_codes) == 19
+    assert len(all_codes) == 23
+    assert PACKET_REASON_CODES == expected_packet
+    assert SOURCE_REASON_CODES == expected_source
+    assert CANDIDATE_REASON_CODES == expected_citation | expected_candidate
 
 
 def test_receipt_identity_inputs_are_seven_and_six_per_branch() -> None:

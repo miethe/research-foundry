@@ -33,6 +33,10 @@ from research_foundry.paths import FoundryPaths
 from research_foundry.services.external_research_import import (
     import_external_report,
 )
+from research_foundry.services.external_research_interchange import (
+    CANDIDATE_REASON_CODES,
+    SOURCE_REASON_CODES,
+)
 from research_foundry.services.source_acquisition_policy import AcquisitionOutcome
 from tests.unit.test_external_research_interchange import build_packet
 
@@ -45,24 +49,9 @@ FIXTURES_ROOT = (
     / "profiles"
 )
 
-# Contract §2.3's 14-code source/citation/candidate reason vocabulary --
+# Contract §2.3's source/citation/candidate reason vocabulary --
 # closed set, must NEVER appear verbatim anywhere in a caller-visible receipt.
-_SOURCE_CITATION_CANDIDATE_REASON_CODES = (
-    "invalid_locator",
-    "source_unavailable",
-    "rights_metadata_missing",
-    "sensitivity_denied",
-    "source_drift",
-    "edition_binding_conflict",
-    "citation_unresolved",
-    "citation_ambiguous",
-    "citation_mismatch",
-    "passage_binding_conflict",
-    "basis_incomplete",
-    "relation_invalid",
-    "verification_failed",
-    "cross_workspace_denied",
-)
+_SOURCE_CITATION_CANDIDATE_REASON_CODES = tuple(sorted(SOURCE_REASON_CODES | CANDIDATE_REASON_CODES))
 
 
 @pytest.fixture()
@@ -142,7 +131,7 @@ def test_receipt_never_carries_the_source_citation_candidate_reason_vocabulary(
 ) -> None:
     """A packet engineered to hit several DIFFERENT quarantine reason
     families in one import (unavailable source, unresolved citation) still
-    never surfaces a `reason_code` field, nor any of the 14 closed-vocabulary
+    never surfaces a `reason_code` field, nor any of the closed-vocabulary
     strings, anywhere in the full receipt -- only the opaque `audit_ref`."""
 
     root = build_packet(

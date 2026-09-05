@@ -27,7 +27,7 @@ description: >-
   external_research_import_checkpoint.schema.yaml (contract §2.2).
 
   Per-action `reason_code` is REMOVED from this caller-visible schema (audit
-  finding #15): the specific 19-code vocabulary and any reason-differentiated
+  finding #15): the specific 23-code vocabulary and any reason-differentiated
   counts exist only in the access-controlled audit record (contract §4.6),
   referenced here by an opaque `audit_ref`. `completeness_tier` stays fully
   visible -- it is the item's own positive-progress state, needed for
@@ -247,8 +247,8 @@ properties:
           description: >-
             Opaque reference (contract §4.6, audit finding #15) into the
             access-controlled audit record holding this action's specific
-            reason code (the closed 19-code source/citation/candidate
-            vocabulary, PRD §6.5) and per-reason-code counts. Never itself a
+            reason code (the closed 18-code source/citation/candidate
+            vocabulary, contract §2.3) and per-reason-code counts. Never itself a
             reason code, never free text. Required non-null exactly when
             `outcome` is `quarantined`; null when `completed`.
           type: [string, "null"]

@@ -110,6 +110,10 @@ CANDIDATE_REASON_CODES = frozenset(
         "basis_incomplete",
         "relation_invalid",
         "verification_failed",
+        "target_run_not_found",
+        "promotion_invalid",
+        "promotion_io_failed",
+        "promotion_failed",
         "cross_workspace_denied",
     }
 )

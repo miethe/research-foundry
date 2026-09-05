@@ -95,7 +95,7 @@ from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from typing import Any
 
-from ..errors import NotFoundError
+from ..errors import NotFoundError, SchemaError
 from ..paths import FoundryPaths
 from .assertion_registry import AssertionRegistry, RegistryIntegrityError
 from .external_research_interchange import (
@@ -479,8 +479,10 @@ def default_promote(request: PromotionRequest) -> PromotionOutcome:
         )
     except NotFoundError:
         return PromotionOutcome(ok=False, error="target_run_not_found")
-    except Exception:  # noqa: BLE001 - staging failure never crashes the import
-        return PromotionOutcome(ok=False, error="promotion_failed")
+    except (SchemaError, RegistryIntegrityError):
+        return PromotionOutcome(ok=False, error="promotion_invalid")
+    except OSError:
+        return PromotionOutcome(ok=False, error="promotion_io_failed")
     return PromotionOutcome(ok=True, source_card_id=result.source_card_id)
 
 
@@ -1105,7 +1107,13 @@ class ExternalResearchResolver:
         )
         promotion = self._promote(request)
         if not promotion.ok:
-            return _candidate_quarantine("verification_failed")
+            # Staging errors say nothing about evidence fidelity. Keep known
+            # causes in the audit effect, and quarantine unclassified failures
+            # from injected promoters without accepting arbitrary reason codes.
+            reason = promotion.error if promotion.error in {
+                "target_run_not_found", "promotion_invalid", "promotion_io_failed",
+            } else "promotion_failed"
+            return _candidate_quarantine(reason)
         refs = {**refs, "source_card_id": promotion.source_card_id or ""}
         return ResolvedActionResolution("completed", "passage_resolved", None, canonical_refs=refs)
 
