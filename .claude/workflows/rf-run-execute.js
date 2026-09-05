@@ -29,6 +29,12 @@ function stampFromTimestamp(ts) {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(ts || '')
   return m ? (m[1] + m[2] + m[3]) : null
 }
+// Derive a YYYY-MM-DD date string from args.timestamp for use in prompt text (never a
+// literal date -- see the freshness-window drift finding, node_01M0NCE7FKY4VC5HQ0QQD9DCGM).
+function dateStrFromTimestamp(ts) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(ts || '')
+  return m ? (m[1] + '-' + m[2] + '-' + m[3]) : '2026-06-13'
+}
 
 const RF = resolvePath(A.rf_bin || '/Users/miethe/.local/bin/rf')
 const REPO = resolvePath(A.repo || '/Users/miethe/dev/homelab/development/research-foundry')
@@ -129,7 +135,7 @@ function discoveryPrompt(ang){
   return 'Mode: A — research discovery. You are a source scout for a Research Foundry run.\n\n' +
   'RESEARCH FOCUS: ' + ang.focus + '\n' +
   'OVERALL QUESTION: ' + A.question + '\n' +
-  'FRESHNESS: prefer sources published/updated within the last ' + (A.freshness_days||180) + ' days (roughly since late 2025); today is 2026-06-13. Older sources are allowed only for stable/foundational facts and must be marked tertiary.\n\n' +
+  'FRESHNESS: prefer sources published/updated within the last ' + (A.freshness_days||180) + ' days; today is ' + dateStrFromTimestamp(A.timestamp) + '. Older sources are allowed only for stable/foundational facts and must be marked tertiary.\n\n' +
   'DO REAL WEB RESEARCH. Load and use web tools: run ToolSearch query "select:WebSearch,WebFetch" (and you may use the firecrawl skill / mcp__claude-in-chrome if helpful). Find 5-9 AUTHORITATIVE, current sources for the focus above. Strongly prefer PRIMARY sources: official documentation, vendor pricing pages, official GitHub repos/changelogs, arXiv/peer-reviewed papers, standards. Avoid SEO blogspam and undated content.\n' +
   (ang.local_refs && ang.local_refs.length ? ('ALSO read these local seed files (they are primary context, source_rank primary) and include any that contain citable facts: ' + ang.local_refs.join(' ; ') + '\n') : '') +
   '\nFor each source return: url (real, resolvable), title, source_type, published (YYYY-MM or date; best estimate, "unknown" only if truly absent), source_rank, why (1 sentence: what citable facts it yields for THIS focus), key_points (3-6 short strings, each an extractable factual claim with a number/name/date where possible).\n' +
