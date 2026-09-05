@@ -210,6 +210,65 @@ def _materiality(text: str, claim_type: str) -> str:
     return "background"
 
 
+def _normalize_claim_text(text: str) -> str:
+    """Fold whitespace/case so cross-source text agreement is a plain equality
+    check -- deterministic, no embeddings, no model call (constraint 4)."""
+
+    return re.sub(r"\s+", " ", (text or "").strip().lower())
+
+
+def _extraction_step_flagged_ambiguous(fact: dict) -> bool:
+    """True when extraction itself flagged this fact ambiguous.
+
+    ``extraction.py::_fact_from_point`` stamps ``notes = "flagged
+    needs_content"`` exactly when the underlying source point's content
+    could not be retrieved (``source_cards.py``'s degraded-content path) --
+    i.e. this fact's ``text`` is a fixed locator-only placeholder, not read
+    content. That is the one deterministic ambiguity signal recorded at
+    extraction time; it is distinct from cross-source agreement, which is
+    computed separately below.
+    """
+
+    return "needs_content" in str(fact.get("notes") or "")
+
+
+def _compute_claim_confidence(*, agreement_count: int, ambiguous: bool) -> str:
+    """Deterministic confidence rubric -- zero model calls (constraint 4).
+
+    Fixes the bare passthrough default this function used to have
+    (``str(fact.get("confidence") or "medium")``): every extracted fact's
+    ``confidence`` was the SAME hard-coded ``"medium"`` stamped once by
+    ``extraction.py::_fact_from_point``, so the claim ledger's confidence
+    field computed nothing and never varied by claim. This is a MISSING
+    computation being added, not a broken one being repaired -- there is no
+    prior computed value to have regressed, so no positive control exists
+    for this change and none is claimed.
+
+    Kept to the existing 3-level schema enum (``low``/``medium``/``high``)
+    rather than widened to 5, because ``catalog_service._CONFIDENCE_RANK``
+    only knows those three and silently ranks anything else at 0 -- BELOW
+    ``low``. Widening the scale would need a coordinated schema + ranking
+    change that is out of this fix's scope.
+
+    - ``ambiguous`` (extraction flagged the point ``needs_content``, so
+      this fact's text is a locator-only placeholder rather than retrieved
+      content) -> ``"low"``, regardless of agreement. Two degraded cards
+      can share the identical placeholder sentence; that coincidence must
+      never outrank a genuinely single-sourced, actually-read fact.
+    - not ambiguous and >=1 OTHER source card independently produced a
+      fact whose normalized text matches this one -> ``"high"``.
+    - not ambiguous, single source -> ``"medium"`` (the historical
+      default value, now genuinely earned rather than assumed for every
+      claim).
+    """
+
+    if ambiguous:
+        return "low"
+    if agreement_count >= 1:
+        return "high"
+    return "medium"
+
+
 def build_claim_ledger(
     run_id: str,
     *,
@@ -241,6 +300,24 @@ def build_claim_ledger(
         index_pediatric_cds_thresholds(run_paths.sources) if vocabulary else {}
     )
 
+    # Pre-pass: normalized-text -> {source_card_id, ...} across every
+    # extraction card in the run. This measures cross-source agreement for
+    # confidence (G1 fix) WITHOUT merging claims' `sources` lists, which must
+    # stay single-element -- validate_extraction_fact_claim_mappings's
+    # bijection check requires exactly one source per fact-derived claim.
+    agreement_index: dict[str, set[str]] = {}
+    for ext_file in sorted(run_paths.extractions.glob("*.yaml")):
+        card = load_yaml(ext_file)
+        if not isinstance(card, dict):
+            continue
+        card_source_id = str(card.get("source_card_id") or "")
+        for fact in card.get("extracted_facts") or []:
+            if not isinstance(fact, dict):
+                continue
+            normalized = _normalize_claim_text(str(fact.get("text") or ""))
+            if normalized:
+                agreement_index.setdefault(normalized, set()).add(card_source_id)
+
     for ext_file in sorted(run_paths.extractions.glob("*.yaml")):
         card = load_yaml(ext_file)
         if not isinstance(card, dict):
@@ -254,13 +331,19 @@ def build_claim_ledger(
             claim_type = _claim_type(text)
             evidence_id = str(fact.get("evidence_id") or "ev_001")
             locator = str(fact.get("locator") or "para/0")
+            normalized_text = _normalize_claim_text(text)
+            agreeing_sources = agreement_index.get(normalized_text, set()) - {source_card_id}
+            confidence = _compute_claim_confidence(
+                agreement_count=len(agreeing_sources),
+                ambiguous=_extraction_step_flagged_ambiguous(fact),
+            )
             claim = {
                 "claim_id": f"clm_{counter:03d}",
                 "text": text or "(no text)",
                 "materiality": _materiality(text, claim_type),
                 "claim_type": claim_type,
                 "status": "supported",
-                "confidence": str(fact.get("confidence") or "medium"),
+                "confidence": confidence,
                 "sources": [
                     {
                         "source_card_id": source_card_id,
