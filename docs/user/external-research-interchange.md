@@ -4,7 +4,7 @@ doc_type: user_guide
 schema_version: 2
 status: active
 created: 2026-07-27
-updated: 2026-07-27
+updated: 2026-09-05
 feature_slug: external-research-report-interchange
 ---
 
@@ -148,6 +148,15 @@ Common reasons an item quarantines:
 - the item required rights metadata or sensitivity clearance that was missing or denied.
 
 ## Troubleshooting
+
+**Candidates quarantine against a target run.** An authorized operator can inspect
+`receipts/<receipt_digest>/effects/*.yaml` for the specific `reason_code` referenced by the receipt's
+`audit_ref`. `target_run_not_found` means the supplied `--run` was never scaffolded; create the intended
+run before a new import. `promotion_invalid` identifies invalid staging data, `promotion_io_failed`
+identifies filesystem failures, and `promotion_failed` identifies an unclassified promotion-adapter
+failure. These are separate from evidence that could not verify (`verification_failed`). Count these
+per-action reasons directly: `by_completeness_tier` cannot contain failure reasons. Existing terminal
+receipts are immutable, and replay preserves their original reasons.
 
 **"blocked" status, not a receipt with quarantined items.** This means the packet itself failed
 structural validation before anything was resolved — a required member is missing, a schema version

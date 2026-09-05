@@ -19,8 +19,11 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import yaml
 
+from research_foundry.errors import SchemaError
 from research_foundry.paths import FoundryPaths
+from research_foundry.services.assertion_registry import RegistryIntegrityError
 from research_foundry.services.external_research_interchange import (
     ExternalResearchInterchange,
     ResolutionContext,
@@ -585,7 +588,7 @@ class TestPromotion:
         # url is unaffected -- both fields propagate independently.
         assert front_matter["source"]["locator"]["url"] == _SOURCE_URL
 
-    def test_verification_fail_when_target_run_missing_quarantines(self, tmp_path: Path, workspace: FoundryPaths) -> None:
+    def test_missing_target_run_persists_target_reason_in_receipt_effect(self, tmp_path: Path, workspace: FoundryPaths) -> None:
         sources, candidates = _one_source_one_candidate()
         root = build_packet(tmp_path / "packet", sources=sources, candidates=candidates)
         resolver = _resolver(workspace, candidates, content_by_locator={_SOURCE_URL: _SOURCE_TEXT.encode()})
@@ -594,6 +597,76 @@ class TestPromotion:
 
         outcome = _outcome_for(result.receipt, root, "candidate", "candidate_id", "cand_001")
         assert outcome["outcome"] == "quarantined"
+        assert outcome["completeness_tier"] is None
+        assert outcome["audit_ref"] is not None
+        interchange = ExternalResearchInterchange(workspace_id="ws_demo", paths=workspace)
+        effect_path = interchange._effect_path(result.receipt["receipt_digest"], "candidate", outcome["action_id"])
+        effect = yaml.safe_load(effect_path.read_text())
+        assert effect["reason_code"] == "target_run_not_found"
+        assert effect["reason_code"] != "verification_failed"
+        assert result.receipt["target_run_id"] == "rf_run_never_created"
+        assert not workspace.run_paths("rf_run_never_created").run.exists()
+
+    @pytest.mark.parametrize(
+        ("error", "reason"),
+        [(SchemaError("invalid metadata"), "promotion_invalid"),
+         (RegistryIntegrityError("corrupt registry binding"), "promotion_invalid"),
+         (PermissionError("unwritable source directory"), "promotion_io_failed")],
+    )
+    def test_expected_staging_failure_persists_specific_reason(
+        self, tmp_path: Path, workspace: FoundryPaths, monkeypatch: pytest.MonkeyPatch,
+        error: Exception, reason: str,
+    ) -> None:
+        def fail_ingest(*args: Any, **kwargs: Any) -> None:
+            raise error
+
+        monkeypatch.setattr(
+            "research_foundry.services.external_research_resolution._default_ingest_source", fail_ingest,
+        )
+        sources, candidates = _one_source_one_candidate()
+        root = build_packet(tmp_path / "packet", sources=sources, candidates=candidates)
+        resolver = _resolver(workspace, candidates, content_by_locator={_SOURCE_URL: _SOURCE_TEXT.encode()})
+        result = _stage(workspace, root, resolver, target_run_id="rf_run_test")
+        outcome = _outcome_for(result.receipt, root, "candidate", "candidate_id", "cand_001")
+        interchange = ExternalResearchInterchange(workspace_id="ws_demo", paths=workspace)
+        effect = yaml.safe_load(interchange._effect_path(
+            result.receipt["receipt_digest"], "candidate", outcome["action_id"],
+        ).read_text())
+        assert effect["reason_code"] == reason
+        assert effect["outcome"] == "quarantined"
+
+    def test_unexpected_staging_failure_propagates(
+        self, tmp_path: Path, workspace: FoundryPaths, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        def fail_ingest(*args: Any, **kwargs: Any) -> None:
+            raise RuntimeError("unexpected staging defect")
+
+        monkeypatch.setattr(
+            "research_foundry.services.external_research_resolution._default_ingest_source", fail_ingest,
+        )
+        sources, candidates = _one_source_one_candidate()
+        root = build_packet(tmp_path / "packet", sources=sources, candidates=candidates)
+        resolver = _resolver(workspace, candidates, content_by_locator={_SOURCE_URL: _SOURCE_TEXT.encode()})
+        with pytest.raises(RuntimeError, match="unexpected staging defect"):
+            _stage(workspace, root, resolver, target_run_id="rf_run_test")
+
+    @pytest.mark.parametrize("error", [None, "custom_failure", "verification_failed"])
+    def test_unclassified_promoter_failure_is_not_evidence_failure(
+        self, tmp_path: Path, workspace: FoundryPaths, error: str | None,
+    ) -> None:
+        sources, candidates = _one_source_one_candidate()
+        root = build_packet(tmp_path / "packet", sources=sources, candidates=candidates)
+        resolver = _resolver(
+            workspace, candidates, content_by_locator={_SOURCE_URL: _SOURCE_TEXT.encode()},
+            promote=lambda request: PromotionOutcome(ok=False, error=error),
+        )
+        result = _stage(workspace, root, resolver, target_run_id="rf_run_test")
+        outcome = _outcome_for(result.receipt, root, "candidate", "candidate_id", "cand_001")
+        interchange = ExternalResearchInterchange(workspace_id="ws_demo", paths=workspace)
+        effect = yaml.safe_load(interchange._effect_path(
+            result.receipt["receipt_digest"], "candidate", outcome["action_id"],
+        ).read_text())
+        assert effect["reason_code"] == "promotion_failed"
 
     def test_promotion_never_self_assigns_verified(self, tmp_path: Path, workspace: FoundryPaths) -> None:
         def always_ok(request: PromotionRequest) -> PromotionOutcome:
@@ -784,6 +857,11 @@ class TestPromotion:
         direct_resolution = second_resolver.resolve_candidate(second_candidates[0], sources_by_id, context)
         assert direct_resolution.outcome == "quarantined"
         assert direct_resolution.reason_code == "verification_failed"
+        interchange = ExternalResearchInterchange(workspace_id="ws_demo", paths=workspace)
+        effect = yaml.safe_load(interchange._effect_path(
+            result.receipt["receipt_digest"], "candidate", reused_outcome["action_id"],
+        ).read_text())
+        assert effect["reason_code"] == "verification_failed"
 
         # No network I/O for either reused source: only src_fresh's locator
         # was ever passed to acquire().
@@ -991,7 +1069,10 @@ class TestPromotion:
         run_id = "rf_run_corrupt_edition"
         (workspace.runs / run_id).mkdir(parents=True)
 
-        from research_foundry.services.assertion_registry import AssertionRegistry, RegistryIntegrityError
+        from research_foundry.services.assertion_registry import (
+            AssertionRegistry,
+            RegistryIntegrityError,
+        )
 
         registry = AssertionRegistry(workspace_id="ws_demo", paths=workspace)
         corrupt_url = "https://example.test/articles/corrupt"

@@ -4,7 +4,7 @@ doc_type: architecture
 status: proposed
 schema_version: 1
 created: 2026-07-26
-updated: 2026-07-27
+updated: 2026-09-05
 feature_slug: external-research-report-interchange
 resolves: ["ERI-OQ-1", "ERI-OQ-2", "ERI-OQ-3", "ERI-OQ-4"]
 findings_doc_ref: .claude/findings/external-research-report-interchange-findings.md
@@ -509,24 +509,60 @@ never publishes a false terminal receipt."). Once a terminal receipt is publishe
 takes one of exactly the three values above — never `pending`, and never re-derived from a later
 checkpoint read.
 
-### 2.3 Safe reason codes — closed vocabulary (verbatim families from PRD §6.5)
+### 2.3 Safe reason codes — closed vocabulary
 
 | Family | Codes |
 |---|---|
 | packet | `required_member_missing`, `unsupported_schema_version`, `unsafe_member_path`, `member_digest_conflict`, `limit_exceeded` |
 | source | `invalid_locator`, `source_unavailable`, `rights_metadata_missing`, `sensitivity_denied`, `source_drift`, `edition_binding_conflict` |
 | citation | `citation_unresolved`, `citation_ambiguous`, `citation_mismatch`, `passage_binding_conflict` |
-| candidate | `basis_incomplete`, `relation_invalid`, `verification_failed`, `cross_workspace_denied` |
+| candidate | `basis_incomplete`, `relation_invalid`, `verification_failed`, `cross_workspace_denied`, `target_run_not_found`, `promotion_invalid`, `promotion_io_failed`, `promotion_failed` |
 
-19 codes, 4 families, closed set. A quarantined item carries **exactly one** reason code from this set
+23 codes, 4 families, closed set. A quarantined item carries **exactly one** reason code from this set
 — never free text, never a vendor-supplied string, never more than one code per terminal outcome. This
 remains true as an internal, access-controlled fact (§4.6): it is what makes the audit record safe to
 aggregate without ambiguity. **What changed under audit #15: the packet family (which describes the
 submitted packet's own structure back to its own submitter, not a cross-workspace fact) stays directly
-visible as `block_reason` on a `blocked` receipt; the source/citation/candidate families (14 codes,
+visible as `block_reason` on a `blocked` receipt; the source/citation/candidate families (18 codes,
 which CAN differentiate facts about other resources/workspaces — `cross_workspace_denied` is the
 clearest example) are removed from the ordinary caller-visible per-action surface and replaced with an
 opaque `audit_ref` (§4.3, §4.6, and the receipt schema's `actions[].audit_ref` field).**
+
+#### Promotion failure diagnostics and consumer compatibility
+
+The candidate vocabulary adds four codes to the original PRD §6.5 baseline:
+
+| Code | Meaning and operator action |
+|---|---|
+| `target_run_not_found` | The target `--run` does not exist. Scaffold the intended run before a new import. |
+| `promotion_invalid` | Source-card staging rejected invalid data. Check the staging inputs and schema. |
+| `promotion_io_failed` | Source-card staging encountered a filesystem error. Check storage access and availability. |
+| `promotion_failed` | A promotion adapter returned failure without a recognized classification. Inspect that adapter; this does not establish an evidence failure. |
+
+These codes distinguish staging failures from `verification_failed`, which describes evidence that
+could not verify. Unexpected programming exceptions from the default promotion adapter propagate;
+they are not converted into opaque staging failures. Exception messages are not copied into reason
+codes or caller-visible receipts.
+
+For acceptance checks and reports, inspect the access-controlled
+`receipts/<receipt_digest>/effects/*.yaml` records' `reason_code` values. The ordinary receipt keeps
+only the opaque `audit_ref`; `counts.by_completeness_tier` counts completed tiers and cannot measure
+failure reasons. Stored terminal effects remain immutable, so historical `verification_failed`
+records are not reclassified by this change. A replay returns those stored records unchanged.
+
+Consumer audit for this additive internal vocabulary change:
+
+- `external_research_interchange.py` writes and replays effect reason strings; the resolver enforces
+  membership in `CANDIDATE_REASON_CODES`. No effect schema enum or migration is required.
+- `external_research_import_receipt.schema.yaml` excludes per-action reasons and reason counts. Its
+  caller-visible packet `block_reason` enum is unchanged; only descriptive vocabulary counts change.
+- `export_service.py`, `rf-run-export-schema.json`, and `frontend/runs-viewer/src` do not export or
+  enumerate ERI candidate reasons. The viewer's assertion/rights reason strings are a separate surface.
+- `test_external_research_schemas.py` tracks the vocabulary; the adversarial matrix must cover every
+  internal reason when asserting that receipts do not disclose reason detail.
+- The completed reused-edition/backfill plans and the 2026-08-02 AAR retain their historical evidence.
+  Their M3 checks use per-action reasons and require an existing target run; new reports must count
+  target and staging failures separately from evidence failures using the codes above.
 
 ### 2.4 Policy evaluation ordering — canonical sequence
 
@@ -1151,13 +1187,13 @@ sequences, format-directive-shaped substrings, hostile IDs, or resolved addresse
 
 | Channel | Packet-derived free text (locators, quoted passages, vendor extension values) | Reason codes / detail | IDs |
 |---|---|---|---|
-| CLI stdout/stderr (denial output) | Never | Never the specific 14-code source/citation/candidate vocabulary (§4.3); `block_reason` only | Safe generated IDs only (`receipt_id`, `action_id`, `packet_digest`) |
+| CLI stdout/stderr (denial output) | Never | Never the specific 18-code source/citation/candidate vocabulary (§4.3); `block_reason` only | Safe generated IDs only (`receipt_id`, `action_id`, `packet_digest`) |
 | Structured application logs | Never raw/interpolated; only as a labeled, escaped structured field if genuinely needed for operator debugging, written via structured logging (never string-concatenated into a log-line template) | Full closed vocabulary permitted (operator-facing, not caller-facing) | Safe generated IDs |
 | Receipt / checkpoint (immutable effect records) | Never | `block_reason` (packet family) visible; source/citation/candidate reason codes never appear here — only via `audit_ref` (§4.3) | Safe generated IDs (`receipt_id`, `receipt_digest`, `action_id`, `effect_digest`) |
 | Metrics / counters | Never (metric labels are a fixed, closed cardinality set — never a packet-derived value) | Aggregate counts only per §4.3's redaction rule (no `by_reason_code`) | N/A |
 | Traces / spans | Never in span names/attributes; a span may reference a safe generated ID only | Never the specific code as a span attribute value | Safe generated IDs |
 | Provenance exports | Only as an explicitly escaped, clearly-labeled "producer-supplied" field, never structurally merged with RF-authored provenance fields | `block_reason` only, same as receipts | Safe generated IDs |
-| Access-controlled audit store | The one channel where full quarantine detail (specific reason code, per-`audit_ref` linkage) is permitted, gated by its own access control — this is where `audit_ref` (§4.3) resolves to detail | Full 19-code vocabulary and per-reason-code counts permitted | Safe generated IDs plus the `audit_ref` linkage itself |
+| Access-controlled audit store | The one channel where full quarantine detail (specific reason code, per-`audit_ref` linkage) is permitted, gated by its own access control — this is where `audit_ref` (§4.3) resolves to detail | Full 23-code vocabulary and per-reason-code counts permitted | Safe generated IDs plus the `audit_ref` linkage itself |
 
 **Cross-cutting rules that apply to every row above:** control characters (C0/C1) and ANSI/VT100
 escape sequences appearing in packet-derived text are stripped or escaped before that text reaches ANY
@@ -1165,7 +1201,7 @@ channel in this table (including the audit store — "access-controlled" governs
 whether hostile bytes are sanitized before write); IDs surfaced on any channel are always RF-generated
 (content-addressed digests or the `erh_`/`era_` prefixed forms), never a producer-supplied identifier
 threaded through unescaped; and no channel other than the access-controlled audit store ever receives
-the specific 14-code source/citation/candidate reason-code vocabulary or a reason-code-keyed count.
+the specific 18-code source/citation/candidate reason-code vocabulary or a reason-code-keyed count.
 
 **Open item, recorded here and in the closing table below:** the concrete audit-store artifact
 `audit_ref` resolves against (storage shape, access-control mechanism, retention) is not yet defined —

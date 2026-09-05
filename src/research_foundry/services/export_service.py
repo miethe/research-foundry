@@ -1461,7 +1461,7 @@ def record_external_report_import_activity(
     redaction matrix (§4.6): safe generated IDs (`receipt_id`,
     `receipt_digest`, `packet_digest`), the closed-vocabulary `status` /
     `block_reason` (packet family only), and aggregate `counts` — never
-    packet-derived free text, a resolved address, or the 14-code source/
+    packet-derived free text, a resolved address, or the source/
     citation/candidate reason-code vocabulary (`§4.3`'s `audit_ref`
     indirection already keeps that off the receipt itself).
 
