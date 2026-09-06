@@ -57,6 +57,16 @@ node_modules/
 # Agent scratch memory (per-agent, not a deliverable)
 .claude/agent-memory/
 
+# --- SkillMeat-deployed Claude Code artifacts ---
+# These roots are materialized runtime copies.  Their deployment identity and
+# verification state stay in the tracked .claude SkillMeat ledger and manifest.
+/.claude/agents/
+/.claude/commands/
+/.claude/hooks/
+/.claude/rules/
+/.claude/skills/
+/.claude/workflows/
+
 # MkDocs build output
 website/site/
 
