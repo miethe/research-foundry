@@ -113,6 +113,49 @@ def _split_paragraphs(text: str) -> list[str]:
     return [p.strip() for p in parts if p.strip()]
 
 
+# Exact (case-insensitive) nav-chrome / button-label phrases seen on
+# chrome-heavy academic-paper page shapes (arxiv.org/abs, aclanthology.org).
+# Deliberately a closed phrase list, not a generic short-line heuristic --
+# a generic "short and no terminal punctuation" filter also matches
+# legitimate short content (e.g. a key=value secret line), which is why
+# this list exists instead (see node_01M1WWWPMDCB1X58WRBZWFR4DC and the
+# regression it would otherwise cause in
+# test_pdf_secret_scan_governance.py).
+_BOILERPLATE_PHRASES = {
+    "skip to main content",
+    "arxiv home",
+    "search",
+    "submit",
+    "donate",
+    "log in",
+    "sign in",
+    "menu",
+    "close",
+    "home",
+    "back to top",
+    "press enter to search",
+}
+_BREADCRUMB = re.compile(r"\s>\s")
+_ARXIV_ID_LINE = re.compile(r"^arxiv:?\s*\d{4}\.\d{4,5}(v\d+)?$", re.I)
+
+
+def _is_boilerplate_shaped(paragraph: str) -> bool:
+    """Nav chrome, breadcrumb, or arXiv-id-line paragraph rather than a real
+    content paragraph. Chrome-heavy academic-paper page shapes (arxiv.org/abs,
+    aclanthology.org) stack several of these ahead of the real Abstract
+    paragraph; without filtering them out, ``_MAX_POINTS`` fills entirely
+    with page furniture and the real content is never reached
+    (node_01M1WWWPMDCB1X58WRBZWFR4DC).
+    """
+
+    flat = " ".join(paragraph.split())
+    if flat.lower() in _BOILERPLATE_PHRASES:
+        return True
+    if _BREADCRUMB.search(flat):
+        return True
+    return bool(_ARXIV_ID_LINE.match(flat))
+
+
 def _summary_of(paragraph: str, *, limit: int = 200) -> str:
     """One-line summary: first sentence (or truncated paragraph)."""
 
@@ -224,7 +267,12 @@ def _build_points(content: str | None, *, degraded: bool) -> list[dict]:
                 "needs_content": True,
             }
         ]
-    paragraphs = _split_paragraphs(content)[:_MAX_POINTS]
+    all_paragraphs = _split_paragraphs(content)
+    substantive = [p for p in all_paragraphs if not _is_boilerplate_shaped(p)]
+    # Fall back to the unfiltered list if every paragraph looks like chrome
+    # (e.g. a page that really is just nav links) so ingestion never yields
+    # zero points outright.
+    paragraphs = (substantive or all_paragraphs)[:_MAX_POINTS]
     if not paragraphs:
         paragraphs = [content.strip()[:_SHORT_QUOTE]] if content.strip() else []
     points: list[dict] = []
