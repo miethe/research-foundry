@@ -1305,7 +1305,8 @@ class AssertionKindProjector:
     """
 
     def __init__(self, paths: FoundryPaths | None = None) -> None:
-        self.catalog = AssertionCatalog(paths or FoundryPaths.discover())
+        self.paths = paths or FoundryPaths.discover()
+        self.catalog = AssertionCatalog(self.paths)
 
     def search(
         self,
@@ -1323,7 +1324,7 @@ class AssertionKindProjector:
         if result["denial_reason"] is not None:
             return KindSearchPage(items=(), truncated=False)
 
-        items: list[RfKnowledgeSearchResultItem] = []
+        packets: list[tuple[str, dict[str, Any]]] = []
         for summary in result["items"]:
             assertion_id = summary["assertion_id"]
             try:
@@ -1332,6 +1333,23 @@ class AssertionKindProjector:
                 continue
             if packet is None or packet.get("lifecycle_state") != "eligible":
                 continue
+            packets.append((assertion_id, packet))
+
+        # Mediate the raw packets as one all-or-nothing page before deriving
+        # any title, snippet, URL, or result id from them.  The assertion
+        # catalog is a separate read seam, so catalog_service's mediation
+        # cannot cover these records.
+        try:
+            _mediate_knowledge_payloads(
+                *(packet for _assertion_id, packet in packets),
+                paths=self.paths,
+                target="knowledge_access.assertion.search",
+            )
+        except clearance.ClearanceDenied as exc:
+            raise KnowledgeDenied("clearance_denied") from exc
+
+        items: list[RfKnowledgeSearchResultItem] = []
+        for assertion_id, packet in packets:
             assertion = packet.get("assertion")
             assertion = assertion if isinstance(assertion, dict) else {}
             text_source = str(assertion.get("assertion_text") or assertion_id)
@@ -1363,6 +1381,17 @@ class AssertionKindProjector:
             raise KnowledgeDenied("not_found")
         if packet.get("lifecycle_state") != "eligible":
             raise KnowledgeDenied("not_eligible")
+
+        # Mediate the complete stored packet before deriving any document
+        # field from assertion, passage, edition, or lineage data.
+        try:
+            _mediate_knowledge_payloads(
+                packet,
+                paths=self.paths,
+                target="knowledge_access.assertion.fetch",
+            )
+        except clearance.ClearanceDenied as exc:
+            raise KnowledgeDenied("clearance_denied") from exc
 
         assertion = packet.get("assertion")
         assertion = assertion if isinstance(assertion, dict) else {}
@@ -1478,18 +1507,39 @@ class ReportKindProjector:
             title = str(summary.get("title") or summary["report_draft_id"])
             if query_lower not in title.lower():
                 continue
-            candidates.append(summary)
+            try:
+                draft = builder_service.load_draft(
+                    self.paths,
+                    str(summary["report_draft_id"]),
+                    identity=context.identity,
+                )
+            except (NotFoundError, builder_service.BuilderError):
+                continue
+            candidates.append(draft)
 
         truncated = len(candidates) > limit
+        page = candidates[:limit]
+        # list_drafts() intentionally returns summaries that omit the durable
+        # clearance stamp. Reload the raw drafts, then mediate the complete
+        # returned page before deriving any result field.
+        try:
+            _mediate_knowledge_payloads(
+                *page,
+                paths=self.paths,
+                target=f"knowledge_access.{self.target_kind}.search",
+            )
+        except clearance.ClearanceDenied as exc:
+            raise KnowledgeDenied("clearance_denied") from exc
+
         items: list[RfKnowledgeSearchResultItem] = []
-        for summary in candidates[:limit]:
-            report_draft_id = summary["report_draft_id"]
+        for draft in page:
+            report_draft_id = draft["report_draft_id"]
             item_id = f"rfk:v1:{self.target_kind}:{report_draft_id}"
-            status = summary.get("status")
+            status = draft.get("status")
             items.append(
                 RfKnowledgeSearchResultItem(
                     id=item_id,
-                    title=_truncate_title(str(summary.get("title") or report_draft_id)),
+                    title=_truncate_title(str(draft.get("title") or report_draft_id)),
                     url=build_local_resource_url(item_id, origin=_LOCAL_ORIGIN),
                     kind=self.target_kind,
                     snippet=_truncate_snippet(f"status: {status}") if status else None,
@@ -1513,6 +1563,18 @@ class ReportKindProjector:
             raise KnowledgeDenied("not_found")
         if _record_sensitivity_rank(draft.get("sensitivity")) > context.sensitivity_rank:
             raise KnowledgeDenied("not_found")
+
+        # Mediate the raw stored draft before deriving title, rendered body,
+        # counts, or provenance fields. export_markdown() is deliberately
+        # called only after this gate.
+        try:
+            _mediate_knowledge_payloads(
+                draft,
+                paths=self.paths,
+                target=f"knowledge_access.{self.target_kind}.fetch",
+            )
+        except clearance.ClearanceDenied as exc:
+            raise KnowledgeDenied("clearance_denied") from exc
 
         title = _truncate_title(str(draft.get("title") or report_draft_id))
         try:
