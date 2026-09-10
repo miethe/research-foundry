@@ -639,7 +639,9 @@ def drive_run(
         else:
             from .writeback import build_bundle
 
-            result = build_bundle(ctx.run_id, verify=True, paths=paths)
+            # Thread step 6's result: avoid recomputing verification while preserving
+            # a draft bundle when that already-completed check did not pass.
+            result = build_bundle(ctx.run_id, verify=verified, paths=paths)
             bundle_path = result.bundle_path
             verified = bool(result.verified)
             steps_run.append("bundle")

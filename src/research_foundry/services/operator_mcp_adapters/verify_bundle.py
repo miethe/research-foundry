@@ -48,42 +48,21 @@ gesturing at "any prerequisite-stage denial condition" -- which for
 the H7 above-sensitivity-ceiling guard. Reported, not silently dropped; see
 this task's completion note.
 
-**`run.bundle`: the block is a PREREQUISITE, not a delegated check
-(implementer contract D5).** `build_bundle(verify=True)` NEVER blocks on a
-failed verification -- it writes `evidence_bundle.yaml` unconditionally,
-marking it `status="draft"`/`governance.approved_for_writeback=False`, and
-its own bare `except Exception` around the internal `verify_report` call
-swallows even a verification *crash* into the same "not verified" state
-(traced in `m1-remainder-unknowns.md` U2). This adapter therefore enforces
-the block itself, in two places:
+**`run.bundle`: the block is a prerequisite and service invariant
+(implementer contract D5).** `build_bundle(verify=True)` now refuses to write
+when verification does not pass, and verification exceptions propagate. This
+adapter retains a read-only prerequisite check to fail before invoking the
+serialization barrier, and a live-path re-check as defense in depth:
 
 1. **Prerequisite check** (`_bundle_prerequisites_met`, INSIDE `_run()`,
    after authorization -- see "Fix cycle 1" below): requires an existing,
    on-disk `reviews/verification.yaml` whose `passed` field is `True` for
    this run. Absent, unparsable, or non-passing -> the closure RAISES,
    `writeback.build_bundle` is NEVER called for that request.
-2. **Live-path re-check** (`_run()`'s own body): after calling
-   `writeback.build_bundle(run_id, verify=True, paths=...)`, this module
-   inspects the returned `BundleResult.verified`. If it is `False` --
-   meaning verification state changed between step 1's prerequisite read
-   and this call actually running (a real race: another caller invalidated
-   the run's verification between the two) -- this module RAISES inside
-   the closure, which `operator_cancel_resume_service.run_actions` turns
-   into a governed `"failed"` terminal outcome (`ok=False`), rather than
-   reporting a draft bundle as a successful result.
-
-**Known limitation (stated plainly, per the implementer contract, NOT
-papered over here): in the race above, `build_bundle` has ALREADY WRITTEN
-`evidence_bundle.yaml` to disk (as a `status="draft"`,
-`approved_for_writeback=False` bundle) before this module's own `.verified`
-check ever runs and raises.** The failed `run.bundle` operation is
-therefore NOT perfectly zero-effect in that one race window -- a draft,
-explicitly-not-approved-for-writeback bundle file is left behind. Closing
-this requires changing `writeback.build_bundle` itself (e.g. checking
-verification status before writing, or accepting an injected
-pre-verified flag) -- `writeback.py` is out of this task's file ownership
-(a declared serialization barrier shared with M2, per the implementer
-contract's hard boundaries) and is not touched here. Logged as a follow-up.
+2. **Live-path re-check** (`_run()`'s own body): a returned
+   `BundleResult.verified=False` would violate the service contract and is
+   treated as a governed failure. A contemporaneous verification failure is
+   otherwise refused by `build_bundle` before any bundle is written.
 
 **Sensitivity/workspace resolution (mirrors `swarm_start.py`'s own
 "resolved, never caller-supplied" doctrine).** Both `run_id`'s sensitivity
@@ -365,8 +344,8 @@ def _verify_prerequisites_met(run_id: str, paths: FoundryPaths) -> bool:
 def _bundle_prerequisites_met(run_id: str, paths: FoundryPaths) -> bool:
     """Read-only, best-effort check that a PASSING `reviews/
     verification.yaml` already exists for this run -- the prerequisite
-    `run.bundle` enforces itself (implementer contract D5), since
-    `writeback.build_bundle(verify=True)` never blocks on its own (U2).
+    `run.bundle` and `writeback.build_bundle(verify=True)` both enforce this
+    invariant (implementer contract D5).
     Absent file, unparsable content, or `passed` not `True` (including a
     missing `passed` key entirely) all deny -- never a permissive default.
     `verify_report`'s own persisted record shape (`verification.py`, the
@@ -639,10 +618,9 @@ def invoke_bundle(
     `_run()`) and `writeback.build_bundle` is NEVER called for that request.
     See module docstring's "Fix cycle 1" section for why this check runs
     INSIDE `_run()` (after authorization) rather than before `ctx` is
-    constructed, D5 for the live-path re-check this function also performs,
-    and the one known limitation (a losing race can still leave a draft
-    `evidence_bundle.yaml` on disk) that this task does NOT close (out of
-    file-ownership: `writeback.py`).
+    constructed, and D5 for the live-path re-check this function also
+    performs. `build_bundle` independently refuses a failed verification
+    before writing an evidence bundle.
     """
 
     from research_foundry.services import writeback
@@ -704,19 +682,11 @@ def invoke_bundle(
         result = writeback.build_bundle(run_id, verify=True, paths=resolved_paths)
         captured.append(result)
         if not result.verified:
-            # D5, live-path re-check: verification state changed between
-            # the prerequisite read above and this call actually running.
-            # Raising here is what makes `run_or_replay` terminate this
-            # operation "failed" (`ok=False`) instead of reporting a draft
-            # bundle as a successful result -- see module docstring's
-            # "known limitation" section: `build_bundle` has ALREADY
-            # written a draft `evidence_bundle.yaml` by the time this
-            # raises, so this operation is not perfectly zero-effect in
-            # this one race window.
+            # D5, defense in depth: this branch would violate build_bundle's
+            # verify=True contract and must never report success.
             raise RuntimeError(
-                "run.bundle: build_bundle reported verified=False despite a passing "
-                "prerequisite check -- verification state changed concurrently; "
-                "terminating as failed rather than reporting a draft bundle as success"
+                "run.bundle: build_bundle reported verified=False despite verify=True; "
+                "terminating as failed rather than reporting success"
             )
         effect_ref = f"{BUNDLE_OPERATION_KIND}:{run_id}"
         digest_source = f"{effect_ref}:bundle_id={result.bundle_id}:verified={result.verified}"

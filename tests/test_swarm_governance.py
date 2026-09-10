@@ -23,6 +23,7 @@ Coverage maps to the GOV task table:
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -209,6 +210,24 @@ def _mark_verify_failed(paths: FoundryPaths, run_id: str) -> None:
     bundle = load_yaml(rp.evidence_bundle)
     bundle["governance"]["approved_for_writeback"] = False
     dump_yaml(bundle, rp.evidence_bundle)
+
+
+def test_unverified_swarm_run_emits_draft_bundle(tmp_foundry, tmp_path, monkeypatch):
+    """Step 7 reuses the failed step-6 result instead of re-verifying and raising."""
+
+    run_id = _planned_run(tmp_foundry)
+    _seed_evidence(tmp_foundry, run_id, tmp_path)
+    monkeypatch.setattr(
+        "research_foundry.services.verification.verify_report",
+        lambda *_args, **_kwargs: SimpleNamespace(passed=False),
+    )
+
+    state = drive_run(run_id, llm_legs="none", paths=tmp_foundry, providers={}, writeback=False)
+
+    bundle = load_yaml(tmp_foundry.run_paths(run_id).evidence_bundle)
+    assert state.verified is False
+    assert bundle["status"] == "draft"
+    assert bundle["governance"]["approved_for_writeback"] is False
 
 
 # ---------------------------------------------------------------------------

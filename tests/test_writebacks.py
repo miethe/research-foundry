@@ -9,6 +9,11 @@ rollup, and the work-sensitive review gate.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
+import pytest
+
+from research_foundry.errors import GovernanceError
 from research_foundry.frontmatter import load_md
 from research_foundry.paths import FoundryPaths
 from research_foundry.schemas import validate
@@ -101,6 +106,52 @@ def test_build_bundle_is_schema_valid_with_counts(tmp_foundry: FoundryPaths):
     assert artifacts["report"] in {"reports/report_draft.md", "reports/report_final.md"}
     assert bundle["run_id"] == run_id
     assert bundle["lineage"]["intent_id"]
+
+
+def test_build_bundle_verifier_exception_propagates_without_writing_bundle(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+):
+    run_id = _build_run(tmp_foundry)
+    bundle_path = tmp_foundry.run_paths(run_id).evidence_bundle
+
+    def _raise_verify_report(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("verification service crashed")
+
+    from research_foundry.services import verification
+
+    monkeypatch.setattr(verification, "verify_report", _raise_verify_report)
+
+    with pytest.raises(RuntimeError, match="verification service crashed"):
+        writeback.build_bundle(run_id, verify=True, paths=tmp_foundry)
+
+    assert not bundle_path.exists()
+
+
+def test_build_bundle_failed_verification_refuses_to_write_bundle(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+):
+    run_id = _build_run(tmp_foundry)
+    bundle_path = tmp_foundry.run_paths(run_id).evidence_bundle
+
+    from research_foundry.services import verification
+
+    monkeypatch.setattr(
+        verification, "verify_report", lambda *args, **kwargs: SimpleNamespace(passed=False)
+    )
+
+    with pytest.raises(GovernanceError, match="verification did not pass"):
+        writeback.build_bundle(run_id, verify=True, paths=tmp_foundry)
+
+    assert not bundle_path.exists()
+
+
+def test_build_bundle_passing_verification_writes_verified_bundle(tmp_foundry: FoundryPaths):
+    run_id = _build_run(tmp_foundry)
+
+    result = writeback.build_bundle(run_id, verify=True, paths=tmp_foundry)
+
+    assert result.verified is True
+    assert load_yaml(result.bundle_path)["status"] == "verified"
 
 
 def test_writeback_materializes_all_targets_and_mirrors(tmp_foundry: FoundryPaths):

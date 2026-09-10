@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from ..config import FoundryConfig
-from ..errors import RFError
+from ..errors import GovernanceError, RFError
 from ..frontmatter import dump_md, load_md
 from ..ids import (
     bundle_id,
@@ -185,8 +185,8 @@ def build_bundle(run_id: str, *, verify: bool = True, paths: FoundryPaths | None
     """Assemble ``runs/<run>/evidence_bundle.yaml`` (spec §6.11).
 
     Counts source/extraction cards + claims by status. When ``verify`` is set,
-    runs the verification service first and reflects pass/fail in the bundle
-    status and ``governance.approved_for_writeback``.
+    runs the verification service first and refuses to write unless it passes.
+    With ``verify=False``, the bundle is explicitly emitted as a draft.
     """
 
     # DELIBERATELY UNMEDIATED — no clearance.mediate_run_egress call here, and
@@ -249,13 +249,14 @@ def build_bundle(run_id: str, *, verify: bool = True, paths: FoundryPaths | None
 
     verified = False
     if verify:
-        try:
-            from .verification import verify_report
+        from .verification import verify_report
 
-            vr = verify_report(run_id, paths=paths)
-            verified = bool(vr.passed)
-        except Exception:  # noqa: BLE001 - verification optional / degrades
-            verified = False
+        vr = verify_report(run_id, paths=paths)
+        if not vr.passed:
+            raise GovernanceError(
+                f"verification did not pass; refusing to build bundle for run: {run_id}"
+            )
+        verified = True
 
     intent_id, ibom_id, node_id, intent = _intent_ibom_node(rp, paths)
     sensitivity = _sensitivity(rp)
@@ -1906,7 +1907,27 @@ def governed_writeback(
     config = FoundryConfig(paths=paths)
     bundle = _load_bundle(rp)
     if not bundle:
-        bundle = {"id": build_bundle(run_id, verify=True, paths=paths).bundle_id}
+        try:
+            bundle = {"id": build_bundle(run_id, verify=True, paths=paths).bundle_id}
+        except GovernanceError:
+            # build_bundle(verify=True) now raises (accepted contract, see its
+            # docstring) instead of silently writing a draft bundle when
+            # verification does not pass. governed_writeback still has its
+            # OWN sensitivity-based routing below (auto-emit vs. HITL) that
+            # must run regardless -- a merely-unverified run is an INPUT to
+            # that decision, not a reason to abort the whole operation. Catch
+            # the typed error and take the same non-approved path build_bundle
+            # used to hand back directly: leave `bundle` without a governance
+            # block so `verified` below resolves to False (line ~1912) exactly
+            # as it did when build_bundle wrote a non-raising
+            # `approved_for_writeback: False` draft. Recompute the same
+            # intent-derived id build_bundle would have used (nothing was
+            # persisted, since build_bundle refused to write) so bundle_ident
+            # stays consistent with a later, actually-verified build_bundle()
+            # call for this run. Any OTHER exception (a verifier crash) is not
+            # caught here and propagates -- that is AC1 and is non-negotiable.
+            intent_id, _ibom_id, _node_id, _intent = _intent_ibom_node(rp, paths)
+            bundle = {"id": bundle_id(intent_id or run_id)}
     bundle_ident = str(bundle.get("id") or bundle_id(run_id))
     verified = bool(
         (bundle.get("governance") or {}).get("approved_for_writeback")
