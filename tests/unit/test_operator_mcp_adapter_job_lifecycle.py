@@ -19,6 +19,7 @@ that test needs (out of this task's file ownership; reported, not made).
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 from typing import Any
 
@@ -42,7 +43,7 @@ from research_foundry.services.operator_mcp_adapters import base, job_lifecycle
 from research_foundry.services.operator_operation_service import OperatorOperationService
 from research_foundry.services.operator_receipt_service import OperatorReceiptService
 
-from tests.unit.test_operator_cancel_resume_service import _action, _consume
+from tests.unit.test_operator_cancel_resume_service import _action, _canonical_effects, _consume
 from tests.unit.test_operator_mcp_adapter_run_plan import (  # noqa: F401
     _default_sensitivity_ceiling,
     _recording_ceiling,
@@ -147,6 +148,39 @@ def _resume_confirmation(
     )
     _confirmation_id, token, record = _mint_and_record(op_service, ctx)
     return record, token
+
+
+def _pending_cancel_operation_id(
+    tmp_foundry: FoundryPaths, op_service: OperatorOperationService, target_operation_id: str
+) -> str:
+    """Create an interrupted, supported `job.cancel` operation whose sole
+    original action can be rebuilt by the registered action-manifest adapter."""
+
+    ctx = policy.PolicyContext.for_configured_operator(
+        operation_kind=job_lifecycle.CANCEL_OPERATION_KIND,
+        idempotency_key=f"pending-cancel-{target_operation_id}",
+        effective_sensitivity="public",
+        sensitivity_ceiling="client_sensitive",
+        targets=(policy.TargetRef("agent_job", target_operation_id),),
+        resolved_target_workspaces=(_IDENTITY.workspace_id,),
+        input_payload={"operation_id": target_operation_id},
+    )
+    confirmation_id, token, record = _mint_and_record(op_service, ctx)
+    authorization = _authorize(tmp_foundry, ctx, confirmation_record=record, presented_token=token)
+    manifest = job_lifecycle.get_action_manifest_for_cancel(
+        operation_id=target_operation_id, paths=tmp_foundry
+    )
+    outcome = op_service.consume_and_create_operation(
+        confirmation_id=confirmation_id,
+        presented_token=token,
+        ctx=ctx,
+        authorization=authorization,
+        action_manifest=manifest.action_manifest,
+        declared_action_ids=[action.action_id for action in manifest.actions],
+    )
+    assert outcome.outcome == "created"
+    assert outcome.operation is not None
+    return outcome.operation.operation_id
 
 
 def _insert_corrupt_operation_row(paths: FoundryPaths, operation_id: str, workspace_id: str) -> None:
@@ -433,7 +467,8 @@ def test_job_cancel_dry_run_never_calls_request_cancellation(
 
 def test_job_resume_authorizes_and_provisions_fresh_attempt(tmp_foundry: FoundryPaths) -> None:
     op_service = OperatorOperationService(tmp_foundry)
-    operation_id = _target_operation_id(tmp_foundry, op_service)
+    underlying_operation_id = _target_operation_id(tmp_foundry, op_service)
+    operation_id = _pending_cancel_operation_id(tmp_foundry, op_service, underlying_operation_id)
     record, token = _resume_confirmation(tmp_foundry, op_service, operation_id, "resume-1")
 
     result = job_lifecycle.invoke_resume(
@@ -449,14 +484,98 @@ def test_job_resume_authorizes_and_provisions_fresh_attempt(tmp_foundry: Foundry
     assert result.ok is True, result.error
     assert result.result is not None
     assert result.result["status"] == "resume_authorized"
-    assert result.result["target_operation_kind"] == "run.plan"
-    assert result.result["original_actions_reexecuted"] is False
+    assert result.result["target_operation_kind"] == "job.cancel"
+    assert result.result["original_actions_reexecuted"] is True
+    assert result.result["reexecuted_action_count"] == 1
     assert result.result["new_attempt_id"]
+
+    resumed_receipt = OperatorReceiptService(tmp_foundry).load_terminal_receipt(
+        operation_id, identity=_IDENTITY
+    )
+    assert resumed_receipt is not None
+    assert resumed_receipt["action_count_completed"] == 1
 
     attempt_adapter = OperatorAttemptAdapter(tmp_foundry)
     attempts = attempt_adapter.list_attempts_for_operation(operation_id, identity=_IDENTITY)
     assert len(attempts) == 1
     assert attempts[0].attempt_id == result.result["new_attempt_id"]
+
+
+def test_opm_6_4_h3_resume_converges_with_uninterrupted_cancel_and_skips_recorded_action(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An interrupted supported target has the same canonical effect as its
+    uninterrupted peer, and an already-recorded index is never invoked again."""
+
+    op_service = OperatorOperationService(tmp_foundry)
+    receipt_service = OperatorReceiptService(tmp_foundry)
+    underlying_operation_id = _target_operation_id(tmp_foundry, op_service)
+
+    uninterrupted_record, uninterrupted_token = _cancel_confirmation(
+        tmp_foundry, op_service, underlying_operation_id, "h3-uninterrupted"
+    )
+    uninterrupted = job_lifecycle.invoke_cancel(
+        operation_id=underlying_operation_id,
+        idempotency_key="h3-uninterrupted",
+        confirmation_record=uninterrupted_record,
+        presented_token=uninterrupted_token,
+        paths=tmp_foundry,
+        now=ids.now(),
+        operations=op_service,
+    )
+    assert uninterrupted.ok is True
+    assert uninterrupted.operation_id is not None
+
+    interrupted_operation_id = _pending_cancel_operation_id(
+        tmp_foundry, op_service, underlying_operation_id
+    )
+    effect_ref = f"job.cancel:{underlying_operation_id}"
+    timestamp = ids.now().isoformat()
+    assert receipt_service.record_action_receipt(
+        interrupted_operation_id,
+        identity=_IDENTITY,
+        action_id="request_cancellation",
+        action_index=0,
+        status="completed",
+        attempt_ref="interrupted-attempt",
+        started_at=timestamp,
+        completed_at=timestamp,
+    ).outcome == "created"
+    assert receipt_service.record_effect_receipt(
+        interrupted_operation_id,
+        identity=_IDENTITY,
+        action_id="request_cancellation",
+        effect_kind="job_cancellation_requested",
+        effect_digest=hashlib.sha256(interrupted_operation_id.encode("utf-8")).hexdigest(),
+        effect_ref=effect_ref,
+        generated_at=timestamp,
+    ).outcome == "created"
+
+    def _must_not_repeat(*_args: Any, **_kwargs: Any) -> Any:
+        raise AssertionError("resume must skip an already-recorded action index")
+
+    monkeypatch.setattr(OperatorCancelResumeService, "request_cancellation", _must_not_repeat)
+    resume_record, resume_token = _resume_confirmation(
+        tmp_foundry, op_service, interrupted_operation_id, "h3-resume"
+    )
+    resumed = job_lifecycle.invoke_resume(
+        operation_id=interrupted_operation_id,
+        idempotency_key="h3-resume",
+        confirmation_record=resume_record,
+        presented_token=resume_token,
+        paths=tmp_foundry,
+        now=ids.now(),
+        operations=op_service,
+        receipts=receipt_service,
+    )
+
+    assert resumed.ok is True, resumed.error
+    assert resumed.result is not None
+    assert resumed.result["original_actions_reexecuted"] is True
+    assert resumed.result["resume_point_action_index"] == 1
+    assert _canonical_effects(tmp_foundry, interrupted_operation_id) == _canonical_effects(
+        tmp_foundry, uninterrupted.operation_id
+    )
 
 
 def test_job_resume_already_terminal_denies_governed_not_a_silent_success(tmp_foundry: FoundryPaths) -> None:
@@ -1532,7 +1651,8 @@ def test_get_action_manifest_for_resume_matches_what_invoke_resume_hands_to_run_
     tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     op_service = OperatorOperationService(tmp_foundry)
-    operation_id = _target_operation_id(tmp_foundry, op_service)
+    underlying_operation_id = _target_operation_id(tmp_foundry, op_service)
+    operation_id = _pending_cancel_operation_id(tmp_foundry, op_service, underlying_operation_id)
     record, token = _resume_confirmation(tmp_foundry, op_service, operation_id, "resume-manifest-1")
 
     captured_kwargs: dict[str, Any] = {}
