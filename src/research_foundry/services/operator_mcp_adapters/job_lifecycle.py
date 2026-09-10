@@ -70,36 +70,19 @@ the TARGET operation -- an idempotent, durable cancellation REQUEST (a
 signal a separately-running `run_actions` loop for that operation checks
 at its next safe point), not a synchronous kill.
 
-**`job.resume`'s documented gap (NOT fixed here, same pattern as
-`run_plan.py`'s own "replay result-recovery gap")**:
-`OperatorCancelResumeService.resume_operation` (P2, OPM-2.4) is the
-existing, tested mechanism for actually RE-EXECUTING a target operation's
-remaining actions from its first incomplete index -- but it requires the
-caller to supply that operation's ORIGINAL `actions: Sequence[ActionSpec]`
-sequence. A generic `job.resume` adapter cannot reconstruct an arbitrary
-target operation's actions from its persisted `input_payload` alone: doing
-so correctly would require a cross-adapter re-dispatch registry (e.g.
-`base.get_adapter(target_operation_kind)` exposing its own `actions`
-sequence separately from `invoke()`, which no P3 adapter -- including
-`run_plan.py` -- currently does; `invoke()` builds `actions` internally and
-hands them straight to `run_pipeline`). Building that registry is a
-substantially larger change than a "1 pt ... DTO adapter" task, is not
-listed in this task's file ownership, and touches every other adapter
-module (owned by a concurrent leg for the swarm surface). `invoke_resume`
-below therefore performs the REAL, governed, bounded half of resume that
-does not require it: full fresh authorization of the resume REQUEST itself
-(confirmation, RBAC, workspace, sensitivity -- identical rigor to every
-other governed request), an eligibility check (not already terminal, no
-corrupt receipt state, via the existing `load_terminal_receipt`/
-`resolve_resume_point` primitives), and provisioning of a fresh attempt via
-`OperatorAttemptAdapter.create_attempt` (the SAME durable attempt-linking
-mechanism `resume_operation` itself uses, and the exact call site P2S-NB-9's
-bounded-attempts cap gates). It returns a bounded, HONEST result
-(`"status": "resume_authorized"`, `"original_actions_reexecuted": False`)
-rather than fabricating full re-execution. Wiring `job.resume` to actually
-replay the target operation's original actions is flagged here as a
-required P4/P5 follow-up (needs the cross-adapter action-registry seam
-described above), not silently dropped.
+**`job.resume` rebuilds and re-executes a supported target's original
+actions.** After its fresh resume-request authorization, eligibility check,
+and bounded attempt creation, it loads the target operation's persisted
+kind and input payload, resolves that kind through `base.get_adapter`, and
+requires the optional `OperatorAdapterWithActionManifest` protocol. The
+adapter's side-effect-free accessor rebuilds the exact `ActionSpec` sequence
+its normal pipeline would use; `OperatorCancelResumeService.run_or_replay`
+then executes that target record from its durable first incomplete action
+index. Unsupported or malformed target adapters fail closed inside the
+governed resume action. Already-recorded action indexes are consequently
+skipped by the receipt-backed `run_or_replay` path, while fresh authority,
+confirmation, workspace, and replay rules remain enforced by the outer
+`base.run_pipeline`.
 """
 
 from __future__ import annotations
@@ -397,6 +380,17 @@ def _operation_kind_of(manifest: Mapping[str, Any]) -> Any:
     return None
 
 
+def _operation_input_payload_of(manifest: Mapping[str, Any]) -> Mapping[str, Any] | None:
+    """Return a target operation's persisted request payload only when it
+    has the mapping shape required to rebuild its action manifest."""
+
+    operation = manifest.get("operation")
+    if not isinstance(operation, Mapping):
+        return None
+    input_payload = operation.get("input_payload")
+    return input_payload if isinstance(input_payload, Mapping) else None
+
+
 # ---------------------------------------------------------------------------
 # job.status -- bounded read, CONFIRMATION_NOT_REQUIRED_KINDS. See module
 # docstring for why this bypasses base.run_pipeline entirely.
@@ -679,12 +673,10 @@ def get_action_manifest_for_cancel(
     `authorize_for_consumption`, `base.run_pipeline`, or the returned
     `ActionSpec.run()`.
 
-    This is the accessor `job_lifecycle`'s own module docstring
-    ("documented gap" section) identifies as the seam a future
-    cross-adapter `job.resume` re-execution path would need
-    (`base.get_adapter(target_kind).get_action_manifest(...)`) -- exposed
-    here on `job.cancel` for parity; wiring that re-execution path itself
-    is out of scope for this accessor.
+    `job.resume` uses this accessor through
+    `base.get_adapter(target_kind).get_action_manifest(...)` to rebuild a
+    pending `job.cancel` operation's original actions before governed
+    re-execution.
 
     Builds a REAL `ctx` (via `policy.PolicyContext.for_configured_operator`
     -- structural identity resolution with no durable side effect, see
@@ -722,9 +714,8 @@ def get_action_manifest_for_cancel(
 
 
 # ---------------------------------------------------------------------------
-# job.resume -- full base.run_pipeline. See module docstring's "documented
-# gap" section: this authorizes resume and provisions a fresh attempt; it
-# does NOT re-execute the target operation's original actions.
+# job.resume -- full base.run_pipeline plus governed target-action rebuild
+# and re-execution.
 # ---------------------------------------------------------------------------
 
 
@@ -735,7 +726,9 @@ def _build_resume_actions(
     receipt_service: OperatorReceiptService,
     attempt_adapter: OperatorAttemptAdapter,
     op_service_for_action: OperatorOperationService,
-    captured: list[tuple[Any, int | None, Any]],
+    cancel_resume_service: OperatorCancelResumeService,
+    paths: FoundryPaths,
+    captured: list[tuple[Any, int | None, str, ExecutionOutcome]],
 ) -> tuple[dict[str, Any], tuple[ActionSpec, ...]]:
     """The ONE source of `job.resume`'s `action_manifest` dict and ordered
     `ActionSpec` sequence -- both `invoke_resume` (which hands them to
@@ -771,7 +764,25 @@ def _build_resume_actions(
             )
 
         target_operation = op_service_for_action.load_operation(operation_id, identity=ctx.identity)
-        target_kind = _operation_kind_of(target_operation.manifest) or "unknown"
+        target_kind = _operation_kind_of(target_operation.manifest)
+        target_payload = _operation_input_payload_of(target_operation.manifest)
+        if not isinstance(target_kind, str) or target_payload is None:
+            raise _JobLifecycleActionError(
+                f"job.resume: target operation_id={operation_id} has no rebuildable action manifest"
+            )
+
+        target_adapter = base.get_adapter(target_kind)
+        if target_adapter is None or not isinstance(target_adapter, base.OperatorAdapterWithActionManifest):
+            raise _JobLifecycleActionError(
+                f"job.resume: target operation_kind={target_kind!r} does not expose an action manifest"
+            )
+
+        try:
+            target_manifest = target_adapter.get_action_manifest(paths=paths, **dict(target_payload))
+        except Exception as exc:
+            raise _JobLifecycleActionError(
+                f"job.resume: could not rebuild actions for target operation_id={operation_id}"
+            ) from exc
 
         # Bounded by P2S-NB-9's MAX_ATTEMPTS_PER_OPERATION cap -- raises
         # AttemptLimitExceededError (a plain RuntimeError subclass) once
@@ -788,7 +799,19 @@ def _build_resume_actions(
             workspace_id=ctx.identity.workspace_id,
             identity=ctx.identity,
         )
-        captured.append((new_attempt, resume_point.next_action_index, target_kind))
+        reexecution = cancel_resume_service.run_or_replay(
+            target_operation,
+            is_replay=False,
+            identity=ctx.identity,
+            operation_kind=target_kind,
+            actions=target_manifest.actions,
+            attempt_ref=new_attempt.attempt_id,
+        )
+        if reexecution.status != "completed":
+            raise _JobLifecycleActionError(
+                f"job.resume: target operation_id={operation_id} re-execution {reexecution.status}"
+            )
+        captured.append((new_attempt, resume_point.next_action_index, target_kind, reexecution))
 
         effect_ref = f"{RESUME_OPERATION_KIND}:{operation_id}:{new_attempt.attempt_id}"
         return ActionEffect(
@@ -818,9 +841,9 @@ def invoke_resume(
     receipts: OperatorReceiptService | None = None,
     attempts: OperatorAttemptAdapter | None = None,
 ) -> base.OperatorAdapterResult:
-    """The `job.resume` Operator MCP tool. See module docstring's
-    "documented gap" section for the precise, bounded scope of what this
-    does and does not do.
+    """The `job.resume` Operator MCP tool. It freshly authorizes the resume
+    request, rebuilds a supported target operation's persisted action
+    manifest, and re-executes it through `run_or_replay`.
 
     Also deliberately accepts NO `sensitivity_ceiling` parameter (P3
     hardening pass, H7 defect fix) -- see
@@ -856,27 +879,32 @@ def invoke_resume(
 
     # Captures the provisioned attempt so `_build_result` can report it --
     # mirrors run_plan.py's own `captured` list pattern.
-    captured: list[tuple[Any, int | None, Any]] = []
+    captured: list[tuple[Any, int | None, str, ExecutionOutcome]] = []
     action_manifest, actions = _build_resume_actions(
         operation_id=operation_id,
         ctx=ctx,
         receipt_service=receipt_service,
         attempt_adapter=attempt_adapter,
         op_service_for_action=op_service_for_action,
+        cancel_resume_service=cancel_resume
+        or OperatorCancelResumeService(
+            resolved_paths, operations=op_service_for_action, receipts=receipt_service
+        ),
+        paths=resolved_paths,
         captured=captured,
     )
 
     def _build_result(execution: ExecutionOutcome) -> Mapping[str, Any]:
         if execution.status == "completed" and captured:
-            new_attempt, next_action_index, target_kind = captured[0]
+            new_attempt, next_action_index, target_kind, reexecution = captured[0]
             return {
                 "operation_id": operation_id,
                 "target_operation_kind": target_kind,
                 "status": "resume_authorized",
                 "new_attempt_id": new_attempt.attempt_id,
                 "resume_point_action_index": next_action_index,
-                # See module docstring's "documented gap" section.
-                "original_actions_reexecuted": False,
+                "original_actions_reexecuted": True,
+                "reexecuted_action_count": reexecution.completed_action_count,
             }
         if execution.status == "completed":
             # Exact replay of an already-terminal job.resume REQUEST itself
@@ -914,11 +942,7 @@ def get_action_manifest_for_resume(
     `_build_resume_actions` helper, WITHOUT ever calling
     `authorize_for_consumption`, `base.run_pipeline`, or the returned
     `ActionSpec.run()`. See `get_action_manifest_for_cancel`'s docstring for
-    the full rationale (identical shape, applied to `job.resume` here) --
-    this is the exact accessor the module docstring's "documented gap"
-    section names as the missing seam for a future cross-adapter
-    `job.resume` re-execution path; wiring that path itself remains out of
-    scope.
+    the full rationale (identical shape, applied to `job.resume` here).
 
     Passes a throwaway, never-inspected `captured` list to
     `_build_resume_actions` -- it exists only so `_build_result`-style
@@ -946,6 +970,12 @@ def get_action_manifest_for_resume(
         receipt_service=receipts or OperatorReceiptService(resolved_paths),
         attempt_adapter=attempts or OperatorAttemptAdapter(resolved_paths),
         op_service_for_action=operations or OperatorOperationService(resolved_paths),
+        cancel_resume_service=OperatorCancelResumeService(
+            resolved_paths,
+            operations=operations or OperatorOperationService(resolved_paths),
+            receipts=receipts or OperatorReceiptService(resolved_paths),
+        ),
+        paths=resolved_paths,
         captured=[],
     )
     return base.ActionManifest(action_manifest=action_manifest, actions=actions)
