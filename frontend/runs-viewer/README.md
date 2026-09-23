@@ -41,11 +41,12 @@ rf serve                         # loopback, port 7432, no auth
 rf serve --port 7432             # explicit (same as default)
 ```
 
-Build the frontend pointed at it:
+Build the frontend in live-proxy mode, then serve it from the same process:
 
 ```sh
 VITE_RUNS_FRONTEND_LOOPBACK_API=true pnpm build
-pnpm preview
+RUNS_VIEWER_API_URL=http://127.0.0.1:7432 \
+RUNS_VIEWER_API_TOKEN=<server-only-read-token> pnpm preview
 ```
 
 ## Environment Variables
@@ -53,8 +54,9 @@ pnpm preview
 | Variable | Required | Default | Description |
 |---|---|---|---|
 | `VITE_RUNS_FRONTEND_LOOPBACK_API` | No | `false` | Set to `"true"` to enable loopback mode (Mode B). |
-| `VITE_RUNS_LOOPBACK_API_BASE` | No | `http://127.0.0.1:7432/api` | Override the loopback API base URL. Use the LAN address when `rf serve` is exposed on `0.0.0.0`. |
-| `VITE_RUNS_LOOPBACK_API_TOKEN` | Conditional | _(unset)_ | Shared-secret token for `rf serve --auth-mode token`. Injected at Vite build time; omit the env var entirely when `auth_mode=none`. **Never commit this value.** |
+| `VITE_RUNS_LOOPBACK_API_BASE` | No | `/api` | Explicit API URL for local development only. Leave unset for a LAN deployment so browser fetches stay same-origin. |
+| `RUNS_VIEWER_API_URL` | No | `http://127.0.0.1:7432` | Runtime API origin used only by the Vite dev/preview proxy. |
+| `RUNS_VIEWER_API_TOKEN` | Conditional | _(unset)_ | Runtime read-scoped credential added by the Vite proxy. It is never a `VITE_*` variable and is never embedded in the SPA. **Never commit this value.** |
 | `VITE_RF_CANONICAL_CLAIMS_ENABLED` | No | `false` | Set to `"true"` to enable the canonical-claim merge-review section in the Claim Audit Workbench (`src/lib/canonicalClaimsFlag.ts`). Fail-closed default: absent, not disabled. |
 
 ### Deploy-flag wiring (agentic-node bootstrap)
@@ -62,8 +64,9 @@ pnpm preview
 `VITE_RUNS_FRONTEND_LOOPBACK_API` is not set by hand at deploy time — the
 agentic-node bootstrap script (`agentic_meta_dev/infra/agentic-node/bootstrap-agentic-node.sh`,
 outside this repo) reads its own `RF_UI_LOOPBACK` toggle (default `true`) and
-translates it into `VITE_RUNS_FRONTEND_LOOPBACK_API=true` + the API base +
-token on the `pnpm build:runs-viewer` invocation. `VITE_RF_CANONICAL_CLAIMS_ENABLED`
+must translate it into `VITE_RUNS_FRONTEND_LOOPBACK_API=true` on the build and
+`RUNS_VIEWER_API_URL` plus `RUNS_VIEWER_API_TOKEN` on the preview-server process.
+It must no longer pass `VITE_RUNS_LOOPBACK_API_TOKEN`. `VITE_RF_CANONICAL_CLAIMS_ENABLED`
 follows the same convention: this repo lands the Vite-side env var and its
 consumer (`canonicalClaimsFlag.ts`, this file); the bootstrap-side mirror —
 translating a `RF_CANONICAL_CLAIMS` (or equivalent) toggle into
@@ -73,6 +76,15 @@ landed as of assertion-ledger-activation-v1 P5 (that script lives in the
 separate `agentic_meta_dev` repo, out of scope for this repo's worktree). To be
 tracked and closed out in P6-05 (CHANGELOG + docs phase), not this phase.
 
+### Proxy authorization boundary
+
+The runtime credential is injected only for `GET` and `HEAD` requests to the
+viewer read endpoints: runs (including claim/source/context detail), catalog,
+assertions, reports, and RBAC status. All mutations and unsupported `/api`
+paths are rejected locally with Vite's proxy 404 before an upstream request or
+credential injection. Any browser-supplied `Authorization` header is removed
+and replaced only by `RUNS_VIEWER_API_TOKEN`.
+
 ### Loopback mode examples
 
 **Default loopback (same machine):**
@@ -80,7 +92,7 @@ tracked and closed out in P6-05 (CHANGELOG + docs phase), not this phase.
 ```sh
 VITE_RUNS_FRONTEND_LOOPBACK_API=true \
   pnpm build
-# Uses http://127.0.0.1:7432/api
+# Uses the viewer's same-origin /api proxy.
 ```
 
 **LAN exposure (agentic-nuc, auth_mode=token):**
@@ -91,11 +103,15 @@ RF_SERVE_TOKEN=<secret> rf serve \
   --bind-host 0.0.0.0 \
   --auth-mode token
 
-# Build the SPA pointed at the LAN address:
+# Build the SPA to request its same-origin /api path (no token is passed here):
 VITE_RUNS_FRONTEND_LOOPBACK_API=true \
-VITE_RUNS_LOOPBACK_API_BASE=http://10.42.10.76:7432/api \
-VITE_RUNS_LOOPBACK_API_TOKEN=<secret> \
   pnpm build
+
+# Start the LAN viewer on :3030. The Vite process, not the browser, holds the
+# read-scoped credential and proxies /api to the loopback RF server.
+RUNS_VIEWER_API_URL=http://127.0.0.1:7432 \
+RUNS_VIEWER_API_TOKEN=<server-only-read-token> \
+  pnpm preview
 ```
 
 **Custom port:**
@@ -104,8 +120,9 @@ VITE_RUNS_LOOPBACK_API_TOKEN=<secret> \
 rf serve --port 9000
 
 VITE_RUNS_FRONTEND_LOOPBACK_API=true \
-VITE_RUNS_LOOPBACK_API_BASE=http://127.0.0.1:9000/api \
   pnpm build
+
+RUNS_VIEWER_API_URL=http://127.0.0.1:9000 pnpm preview
 ```
 
 ## Port

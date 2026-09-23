@@ -14,9 +14,8 @@
  *
  * Env vars (Mode B):
  *   VITE_RUNS_FRONTEND_LOOPBACK_API  Set to "true" to activate loopback mode.
- *   VITE_RUNS_LOOPBACK_API_BASE      Override API base URL (default: http://127.0.0.1:7432/api).
- *   VITE_RUNS_LOOPBACK_API_TOKEN     Shared-secret token for auth_mode=token (injected at build
- *                                    time; omit header when not set). See frontend/runs-viewer/README.md.
+ *   VITE_RUNS_LOOPBACK_API_BASE      Defaults to the same-origin /api proxy. An explicit URL
+ *                                    remains available for local development only.
  *
  * Almost all exports here are GET-only, read-only bindings. The R9 sensitivity
  * gate lives in the Python export service; this client never has access to
@@ -53,8 +52,7 @@ const LOOPBACK_ENABLED =
   (import.meta.env?.VITE_RUNS_FRONTEND_LOOPBACK_API === "true" ||
    import.meta.env?.VITE_RUNS_FRONTEND_LOOPBACK_API === true);
 
-const LOOPBACK_BASE =
-  import.meta.env?.VITE_RUNS_LOOPBACK_API_BASE ?? "http://127.0.0.1:7432/api";
+const LOOPBACK_BASE = import.meta.env?.VITE_RUNS_LOOPBACK_API_BASE ?? "/api";
 
 /**
  * Shared mode/base-URL accessors for other API modules (e.g. api/reportsClient.ts,

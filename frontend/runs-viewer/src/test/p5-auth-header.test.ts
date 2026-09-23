@@ -159,6 +159,37 @@ describe("P5 loopbackGet auth-header contract", () => {
   });
 });
 
+describe("viewer same-origin proxy", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    setEnv({
+      VITE_RUNS_FRONTEND_LOOPBACK_API: "true",
+      VITE_RUNS_LOOPBACK_API_BASE: undefined,
+      VITE_RUNS_LOOPBACK_API_TOKEN: undefined,
+    });
+  });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it("loads a nonempty run list through relative /api without a browser bearer token", async () => {
+    let capturedUrl = "";
+    let capturedInit: RequestInit | undefined;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      capturedUrl = String(input);
+      capturedInit = init;
+      return new Response(JSON.stringify([{ run_id: "rf_live_run" }]), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    });
+
+    const { fetchRunList } = await import("@/api/client");
+    await expect(fetchRunList()).resolves.toHaveLength(1);
+    expect(capturedUrl).toBe("/api/runs");
+    expect(getAuthHeader(capturedInit)).toBeNull();
+  });
+});
+
 describe("P5 loopbackGet auth resolver + rate-limit contract", () => {
   beforeEach(() => {
     vi.resetModules();

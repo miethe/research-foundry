@@ -394,10 +394,13 @@ class LaunchRunRequest(BaseModel):
     neither is a 400 (raised as ``ValueError`` by
     :func:`~research_foundry.services.run_launch.launch_run` and mapped here).
 
-    ``title``, ``sensitivity``, ``urgency``, ``tags``, and ``backlog_idea_ref``
-    are ``text``-path fields (forwarded to ``capture_idea``) and are ignored
-    when ``intent_id`` is supplied instead. The remaining fields are common
-    planning passthrough forwarded to ``plan_run`` on both paths.
+    ``title``, ``sensitivity``, ``urgency``, and ``backlog_idea_ref`` are
+    ``text``-path fields (forwarded to ``capture_idea``) and are ignored when
+    ``intent_id`` is supplied instead. ``tags`` persist on the run record for
+    both paths; explicit request tags override backlog-derived tags, while
+    omitted tags preserve the existing backlog-derived behavior. The remaining
+    fields are common planning passthrough forwarded to ``plan_run`` on both
+    paths.
 
     ``reuse_assertion``, ``reuse_workspace_id``, ``required_reuse_edition_id``,
     and ``required_extraction_contract`` are optional reuse-reachability
