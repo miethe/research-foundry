@@ -76,6 +76,15 @@ landed as of assertion-ledger-activation-v1 P5 (that script lives in the
 separate `agentic_meta_dev` repo, out of scope for this repo's worktree). To be
 tracked and closed out in P6-05 (CHANGELOG + docs phase), not this phase.
 
+### Proxy authorization boundary
+
+The runtime credential is injected only for `GET` and `HEAD` requests to the
+viewer read endpoints: runs (including claim/source/context detail), catalog,
+assertions, reports, and RBAC status. All mutations and unsupported `/api`
+paths are rejected locally with Vite's proxy 404 before an upstream request or
+credential injection. Any browser-supplied `Authorization` header is removed
+and replaced only by `RUNS_VIEWER_API_TOKEN`.
+
 ### Loopback mode examples
 
 **Default loopback (same machine):**

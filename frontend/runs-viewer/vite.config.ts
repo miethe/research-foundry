@@ -2,6 +2,7 @@
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import { fileURLToPath, URL } from "node:url";
+import { attachViewerApiAuthorization, isViewerReadRequest } from "./src/lib/viewerApiProxyPolicy";
 
 const LOOPBACK_API = process.env.RUNS_LOOPBACK_API_URL ?? "http://127.0.0.1:8765";
 const VIEWER_API = process.env.RUNS_VIEWER_API_URL ?? "http://127.0.0.1:7432";
@@ -18,10 +19,14 @@ function viewerApiProxy() {
   return {
     target: VIEWER_API,
     changeOrigin: true,
-    configure: (proxy: { on: (event: string, handler: (request: { removeHeader: (name: string) => void; setHeader: (name: string, value: string) => void }) => void) => void }) => {
+    // Vite executes bypass before opening the upstream proxy request. Returning
+    // false is its documented local 404 response, so denied routes never see
+    // the credential injection below.
+    bypass: (request: { method?: string; url?: string }) =>
+      isViewerReadRequest(request.method, request.url) ? undefined : false,
+    configure: (proxy: { on: (event: string, handler: (request: { removeHeader: (name: string) => void; setHeader: (name: string, value: string) => void }) => void) => {
       proxy.on("proxyReq", (request) => {
-        request.removeHeader("authorization");
-        if (VIEWER_API_TOKEN) request.setHeader("authorization", `Bearer ${VIEWER_API_TOKEN}`);
+        attachViewerApiAuthorization(request, VIEWER_API_TOKEN);
       });
     },
   };
