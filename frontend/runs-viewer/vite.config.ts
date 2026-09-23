@@ -14,6 +14,16 @@ if (process.env.VITE_RUNS_LOOPBACK_API_TOKEN) {
   );
 }
 
+type ProxyLike = {
+  on(
+    event: "proxyReq",
+    handler: (request: {
+      removeHeader(name: string): void;
+      setHeader(name: string, value: string): void;
+    }) => void,
+  ): void;
+};
+
 /** Keep the RF bearer credential in the Vite process, never in the SPA. */
 function viewerApiProxy() {
   return {
@@ -24,7 +34,7 @@ function viewerApiProxy() {
     // the credential injection below.
     bypass: (request: { method?: string; url?: string }) =>
       isViewerReadRequest(request.method, request.url) ? undefined : false,
-    configure: (proxy: { on: (event: string, handler: (request: { removeHeader: (name: string) => void; setHeader: (name: string, value: string) => void }) => void) => {
+    configure: (proxy: ProxyLike) => {
       proxy.on("proxyReq", (request) => {
         attachViewerApiAuthorization(request, VIEWER_API_TOKEN);
       });
