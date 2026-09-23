@@ -147,9 +147,10 @@ def launch_run(
     * ``text`` -- runs ``capture_idea`` -> ``triage_idea`` -> ``plan_run``
       (mirrors ``rf capture`` -> ``rf triage`` -> ``rf plan``). ``title``,
       ``sensitivity``, ``urgency``, ``tags``, and ``backlog_idea_ref`` are
-      forwarded to ``capture_idea`` only (mirroring the ``rf capture`` CLI
-      parameter set -- ``rf plan`` accepts no ``--backlog-idea-ref`` flag, so
-      it is not threaded into ``plan_run`` here either).
+      forwarded to ``capture_idea``. ``tags`` is also forwarded to
+      ``plan_run`` so launch-request tags persist on the run record;
+      ``backlog_idea_ref`` remains capture-only because ``rf plan`` accepts
+      no corresponding flag.
     * ``intent_id`` -- an already-triaged intent; calls ``plan_run`` directly
       (mirrors ``rf plan <intent_id>`` alone). ``raw_idea_id`` is ``None`` in
       the result.
@@ -254,6 +255,7 @@ def launch_run(
         freshness_days=freshness_days,
         profile=profile,
         project=project,
+        tags=tags,
         visibility=visibility,
         identity=identity,
         retrieval_policy=retrieval_policy,

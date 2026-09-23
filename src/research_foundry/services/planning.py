@@ -572,6 +572,7 @@ def plan_run(
     freshness_days: int = 180,
     profile: str | None = None,
     project: str | None = None,
+    tags: list[str] | None = None,
     backlog_idea_ref: str | None = None,
     workspace_id: str | None = None,
     visibility: str = "workspace",
@@ -628,6 +629,10 @@ def plan_run(
         Project slug.  Resolved from (in priority order): the ``project``
         argument, the intent's ``project`` field, the intent's
         ``raw_idea.suggested_project`` field, or ``'unassigned'``.
+    tags:
+        Optional launch-request tags. When supplied, these are written to
+        the run record in preference to tags derived from ``backlog_idea_ref``;
+        when omitted, backlog-derived tags retain their existing behavior.
     backlog_idea_ref:
         Optional ``RIB-NNN`` reference to a backlog idea.  When provided,
         ``linked_projects``, ``category``, ``tags``, ``backlog_idea_ref``,
@@ -713,6 +718,13 @@ def plan_run(
         _tags = None
         _backlog_idea_ref = None
         _backlog_idea_id = None
+
+    # Explicit launch tags represent caller-owned run-level correlation
+    # metadata. Preserve legacy backlog-derived tags when omitted; when
+    # supplied, do not merge unrelated backlog classification into the exact
+    # request tag set.
+    if tags is not None:
+        _tags = tags or None
 
     title = str(intent.get("title") or intent_id)
     intent_slug = slugify(title)
