@@ -773,6 +773,30 @@ def test_launch_run_intent_id_path_skips_capture_triage(tmp_path):
     assert body["status"] == "planned"
 
 
+@pytest.mark.parametrize("use_intent_id", [False, True], ids=["text", "intent-id"])
+def test_launch_run_tags_round_trip_through_detail_and_list(tmp_path, use_intent_id):
+    """Launch tags persist on both paths and are exported by both GET shapes."""
+    client, cfg = _make_client(tmp_path)
+    payload = {"tags": ["lab-idem:round-trip", "research-lab"]}
+    if use_intent_id:
+        payload["intent_id"] = _plant_intent(cfg.paths)
+    else:
+        payload["text"] = "Tag persistence across the run export boundary."
+
+    launch = client.post("/api/runs", json=payload)
+    assert launch.status_code == 201, launch.text
+    run_id = launch.json()["run_id"]
+
+    detail = client.get(f"/api/runs/{run_id}", params={"sensitivity_threshold": "personal"})
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["tags"] == payload["tags"]
+
+    listing = client.get("/api/runs")
+    assert listing.status_code == 200, listing.text
+    summary = next(item for item in listing.json() if item["run_id"] == run_id)
+    assert summary["tags"] == payload["tags"]
+
+
 def test_launch_run_both_text_and_intent_id_returns_400(tmp_path):
     """TEST-011c: both text and intent_id set -> 400."""
     client, cfg = _make_client(tmp_path)
