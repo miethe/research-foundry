@@ -1074,4 +1074,6 @@ def test_drive_run_http_matches_cli_state(tmp_path):
 
     resp = client.post(f"/api/runs/{run_id_http}/drive", json={"llm_legs": "none"})
     assert resp.status_code == 200, resp.text
-    assert resp.json()["status_derived"] == direct_state.status_derived
+    body = resp.json()
+    assert body["status_derived"] == direct_state.status_derived
+    assert [r["stage"] for r in body["stage_receipts"]] == body["steps_run"]
