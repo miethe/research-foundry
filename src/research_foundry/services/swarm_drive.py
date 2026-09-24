@@ -48,7 +48,7 @@ from typing import Any
 from ..config import FoundryConfig
 from ..errors import BudgetError, ExitCode, RFError, SchemaError
 from ..ids import now_iso
-from ..paths import FoundryPaths, RunPaths
+from ..paths import FoundryPaths, RunPaths, distribution_root
 from ..yamlio import dump_yaml, load_yaml
 from . import governance, telemetry
 
@@ -203,15 +203,67 @@ _CLAIM_MAP_FEEDBACK_NOTE = (
     "artifact is the feedback surface (staged-artifact kind 'claim')."
 )
 
+# Fallback enums (finding node_01M38EDYFJYJFCTYXTETD60V2M): used only if
+# schemas/claim_ledger.schema.yaml cannot be read at import time. Kept equal
+# to that schema's own enums so the fallback path is never the drift source
+# again — see test_claim_schema_enums_match_ledger_schema.
+_CLAIM_SCHEMA_FALLBACK_ENUMS: dict[str, list[str]] = {
+    "claim_type": [
+        "factual",
+        "causal",
+        "comparative",
+        "quantitative",
+        "attribution",
+        "recommendation",
+        "prediction",
+    ],
+    "materiality": ["material", "background", "style"],
+    "status": ["supported", "mixed", "contradicted", "inference", "speculation", "unsupported"],
+    "relation": ["supports", "contradicts", "context"],
+}
+
+
+def _load_claim_schema_enums() -> dict[str, list[str]]:
+    """Read the claim_type/materiality/status/relation enums straight from
+    ``schemas/claim_ledger.schema.yaml`` (the authority claim_mapping._validate
+    enforces) so the leg-bundle ``_CLAIM_SCHEMA`` hint can never drift from it
+    again (finding node_01M38EDYFJYJFCTYXTETD60V2M). Falls back to a
+    hardcoded copy of the same enums if the schema file is unreadable.
+    """
+    schema_path = distribution_root() / "schemas" / "claim_ledger.schema.yaml"
+    try:
+        raw = load_yaml(schema_path)
+        item_props = raw["properties"]["claims"]["items"]["properties"]
+        source_props = item_props["sources"]["items"]["properties"]
+        return {
+            "claim_type": list(item_props["claim_type"]["enum"]),
+            "materiality": list(item_props["materiality"]["enum"]),
+            "status": list(item_props["status"]["enum"]),
+            "relation": list(source_props["relation"]["enum"]),
+        }
+    except Exception:  # noqa: BLE001 - any read/parse failure -> fallback
+        return dict(_CLAIM_SCHEMA_FALLBACK_ENUMS)
+
+
+_CLAIM_SCHEMA_ENUMS = _load_claim_schema_enums()
+
 # The claim entry shape Hermes must emit (mirrors claim_mapping.build_claim_ledger).
+# Enum members are sourced from schemas/claim_ledger.schema.yaml (see
+# _load_claim_schema_enums) so this hint can never drift from the schema
+# claim_mapping._validate actually enforces.
 _CLAIM_SCHEMA: dict[str, Any] = {
     "claim_id": "clm_NNN",
     "text": "str — the claim sentence",
-    "claim_type": "quantitative|qualitative|causal|comparative|temporal|general",
-    "materiality": "high|medium|low",
-    "status": "supported|inference|speculation",
+    "claim_type": "|".join(_CLAIM_SCHEMA_ENUMS["claim_type"]),
+    "materiality": "|".join(_CLAIM_SCHEMA_ENUMS["materiality"]),
+    "status": "|".join(_CLAIM_SCHEMA_ENUMS["status"]),
     "confidence": "low|medium|high",
-    "sources": [{"source_card_id": "src_… (from a carding leg)", "relation": "supports"}],
+    "sources": [
+        {
+            "source_card_id": "src_… (from a carding leg)",
+            "relation": "|".join(_CLAIM_SCHEMA_ENUMS["relation"]),
+        }
+    ],
 }
 
 
