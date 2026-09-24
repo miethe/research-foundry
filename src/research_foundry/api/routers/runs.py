@@ -28,7 +28,7 @@ The /data/governance.json route is defined in app.py (not under /api).
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel
@@ -36,7 +36,7 @@ from pydantic import BaseModel
 from ...config import FoundryConfig
 from ...errors import GovernanceError, NotFoundError, RFError, SchemaError
 from ...paths import FoundryPaths
-from ...services import audit_service, run_launch
+from ...services import audit_service, run_launch, swarm_drive
 from ...services.audit_service import AuditEvent
 from ...services.clearance import ClearanceDenied
 from ...services.export_service import (
@@ -596,8 +596,77 @@ def launch_run_endpoint(
     return stamp(response)
 
 
-# RBAC-005 / RBAC-901 audit: runs.py has one mutation route as of the
-# http-run-launch-endpoint contract — POST /runs (gated by
+# ---------------------------------------------------------------------------
+# Mutation: POST /runs/{run_id}/drive (Option A phase 1 run-drive endpoint)
+# ---------------------------------------------------------------------------
+
+
+class DriveRunRequest(BaseModel):
+    """Body for POST /api/runs/{run_id}/drive."""
+
+    llm_legs: Literal["none", "ica"] = "none"
+
+
+@router.post("/runs/{run_id}/drive", summary="Drive a planned run through the swarm spine")
+def drive_run_endpoint(
+    run_id: str,
+    body: DriveRunRequest,
+    request: Request,
+    paths: FoundryPaths = Depends(get_paths),
+    _rbac: None = _RBAC_RUN_LAUNCH,
+) -> dict[str, Any]:
+    """Thin wrapper over :func:`swarm_drive.drive_run` — drives one step of
+
+    the deterministic (or ICA leg-emit) swarm spine for an already-planned
+    run. See ``swarm_drive.drive_run`` for the actual pipeline; this route
+    performs no logic of its own beyond error mapping + audit.
+    """
+    # writeback_wait=False is deliberate: an HTTP request must never block on
+    # the HITL writeback poll — the gate stays open and resumes on the next
+    # drive call rather than holding this request open indefinitely.
+    try:
+        state = swarm_drive.drive_run(
+            run_id,
+            llm_legs=body.llm_legs,
+            paths=paths,
+            writeback_wait=False,
+        )
+    except swarm_drive.SensitivityBlocked as exc:
+        raise HTTPException(
+            status_code=403,
+            detail={"error": "sensitivity_blocked", "message": str(exc)},
+        ) from exc
+    except NotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except swarm_drive.DriveError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except SchemaError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RFError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Failed to drive run: %s", exc)
+        raise HTTPException(status_code=500, detail="Failed to drive run") from exc
+
+    # A budget breach is not an error: drive_run returns a clean terminal
+    # DriveState (status_derived == "budget_exceeded", aborted=True) — return
+    # it with 200 unchanged rather than mapping it to an HTTP error.
+    audit_service.record_event(
+        paths,
+        AuditEvent(
+            mutation_type="run_driven",
+            action="drive_run",
+            target_ref=run_id,
+            result="success",
+        ),
+    )
+
+    return stamp(state.to_dict())
+
+
+# RBAC-005 / RBAC-901 audit: runs.py has two mutation routes — POST /runs
+# (http-run-launch-endpoint contract) and POST /runs/{run_id}/drive (Option A
+# phase 1), both gated by
 # Depends(require_role("owner", "admin")) via _RBAC_RUN_LAUNCH, mirroring
 # agent_jobs.py's mutation-route pattern exactly). The six GET routes below
 # remain read-only:
