@@ -1,0 +1,7 @@
+Independently verified — confirmed with a minor correction. My final report:
+
+## Findings
+
+**Writer identified — not an unknown third party.** The 8 measurably-skipped skill dirs (`frontend-design`, `gemini-cli`, `intenttree-cli`, `meatywiki`, `meatywiki-suite`, `nano-banana`, `notebooklm-sync`, `recovering-sessions`) all have `mtime` 2026-09-03 14:00:43–14:02:03, in exactly the alphabetical order the r3 report lists them, seconds apart per dir — a scripted deploy-loop signature, not manual edits. The r3 report was written at 14:04:58, ~3 min later. No commits landed in that window on those paths — the writes are dirty working-tree state. Conclusion: an earlier (round-2 or aborted round-3) pass of the same ADP overwrite tooling wrote these paths just before r3's backup-vs-live gate ran, and the gate correctly caught its own predecessor's write. Self-inflicted, not a mystery writer. (`autopilot`/`context-budget`/`delegation-modes` mtimes not independently checked.)
+
+**Hash construction — confirmed different (Explore-verified).** Ledger `content_hash` (`skillmeat/core/enterprise_deploy.py:3100-3157` + `_hash_length_prefixed_entries:3090-3097`) = one SHA-256 hasher fed length-prefixed `(sorted rel_path, content)` pairs across all files in a single pass — no per-file digest ever exists. The leg's fingerprint = independent SHA-256 per file, sorted by hash string, then SHA-256 of the concatenation (hash-of-hashes). Structurally distinct, non-comparable outputs — mismatch alone is not evidence of a defect.
