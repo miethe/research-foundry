@@ -37,6 +37,8 @@ artifact and a re-run of a completed run is a pure no-op (FR-3).
 
 from __future__ import annotations
 
+import hashlib
+import re
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -46,7 +48,7 @@ from typing import Any
 from ..config import FoundryConfig
 from ..errors import BudgetError, ExitCode, RFError, SchemaError
 from ..ids import now_iso
-from ..paths import FoundryPaths, RunPaths
+from ..paths import FoundryPaths, RunPaths, distribution_root
 from ..yamlio import dump_yaml, load_yaml
 from . import governance, telemetry
 
@@ -114,6 +116,31 @@ _ICA_TURN_CAP_CEILING = 120
 _LEG_SCHEMA_VERSION = "rf.swarm.leg_requests/1.0"
 _LEG_BUNDLE_KIND = "leg_requests"
 
+# ---------------------------------------------------------------------------
+# Option A phase 2 — ICA turn accounting (fulfiller-written receipts)
+# ---------------------------------------------------------------------------
+#
+# rf's own process makes zero model calls (D2/D4/FR-0 above), so its
+# deterministic stages cost 0 ICA turns *by construction* — see
+# :func:`_stage_receipt`. The two genuine LLM legs (carding, claim_map) run
+# out-of-band in the caller's (Hermes) ICA context; rf can only know how many
+# turns they actually burned if the fulfiller writes that back. It does so as
+# an OPTIONAL ``leg_receipts.yaml`` in the run directory (``rp.run``):
+#
+#   schema_version: rf.swarm.leg_receipts/1.0
+#   run_id: <run_id>
+#   legs:
+#     - id: carding-1
+#       leg_type: carding
+#       turns_used: 5
+#       model: claude-haiku-4-5[1m]   # optional
+#
+# :func:`_ica_turns` reads this file (never raises) and reports whether the
+# ICA turn total for the run is *measured* (fulfiller wrote a well-formed
+# file) or not (legs are still awaiting fulfillment, or the file is missing
+# or malformed) — rf never invents a turn count it did not read.
+_LEG_RECEIPTS_SCHEMA = "rf.swarm.leg_receipts/1.0"
+
 # Canonical untrusted-content fence — byte-identical to the aos-web / SearXNG
 # provider fence (``providers/searxng.py``) so a round-trip strip is symmetric.
 _FENCE_BEGIN = "--- BEGIN UNTRUSTED WEB CONTENT ---"
@@ -176,15 +203,67 @@ _CLAIM_MAP_FEEDBACK_NOTE = (
     "artifact is the feedback surface (staged-artifact kind 'claim')."
 )
 
+# Fallback enums (finding node_01M38EDYFJYJFCTYXTETD60V2M): used only if
+# schemas/claim_ledger.schema.yaml cannot be read at import time. Kept equal
+# to that schema's own enums so the fallback path is never the drift source
+# again — see test_claim_schema_enums_match_ledger_schema.
+_CLAIM_SCHEMA_FALLBACK_ENUMS: dict[str, list[str]] = {
+    "claim_type": [
+        "factual",
+        "causal",
+        "comparative",
+        "quantitative",
+        "attribution",
+        "recommendation",
+        "prediction",
+    ],
+    "materiality": ["material", "background", "style"],
+    "status": ["supported", "mixed", "contradicted", "inference", "speculation", "unsupported"],
+    "relation": ["supports", "contradicts", "context"],
+}
+
+
+def _load_claim_schema_enums() -> dict[str, list[str]]:
+    """Read the claim_type/materiality/status/relation enums straight from
+    ``schemas/claim_ledger.schema.yaml`` (the authority claim_mapping._validate
+    enforces) so the leg-bundle ``_CLAIM_SCHEMA`` hint can never drift from it
+    again (finding node_01M38EDYFJYJFCTYXTETD60V2M). Falls back to a
+    hardcoded copy of the same enums if the schema file is unreadable.
+    """
+    schema_path = distribution_root() / "schemas" / "claim_ledger.schema.yaml"
+    try:
+        raw = load_yaml(schema_path)
+        item_props = raw["properties"]["claims"]["items"]["properties"]
+        source_props = item_props["sources"]["items"]["properties"]
+        return {
+            "claim_type": list(item_props["claim_type"]["enum"]),
+            "materiality": list(item_props["materiality"]["enum"]),
+            "status": list(item_props["status"]["enum"]),
+            "relation": list(source_props["relation"]["enum"]),
+        }
+    except Exception:  # noqa: BLE001 - any read/parse failure -> fallback
+        return dict(_CLAIM_SCHEMA_FALLBACK_ENUMS)
+
+
+_CLAIM_SCHEMA_ENUMS = _load_claim_schema_enums()
+
 # The claim entry shape Hermes must emit (mirrors claim_mapping.build_claim_ledger).
+# Enum members are sourced from schemas/claim_ledger.schema.yaml (see
+# _load_claim_schema_enums) so this hint can never drift from the schema
+# claim_mapping._validate actually enforces.
 _CLAIM_SCHEMA: dict[str, Any] = {
     "claim_id": "clm_NNN",
     "text": "str — the claim sentence",
-    "claim_type": "quantitative|qualitative|causal|comparative|temporal|general",
-    "materiality": "high|medium|low",
-    "status": "supported|inference|speculation",
+    "claim_type": "|".join(_CLAIM_SCHEMA_ENUMS["claim_type"]),
+    "materiality": "|".join(_CLAIM_SCHEMA_ENUMS["materiality"]),
+    "status": "|".join(_CLAIM_SCHEMA_ENUMS["status"]),
     "confidence": "low|medium|high",
-    "sources": [{"source_card_id": "src_… (from a carding leg)", "relation": "supports"}],
+    "sources": [
+        {
+            "source_card_id": "src_… (from a carding leg)",
+            "relation": "|".join(_CLAIM_SCHEMA_ENUMS["relation"]),
+        }
+    ],
 }
 
 
@@ -415,6 +494,15 @@ class DriveState:
     # was aborted cleanly with a durable record, never left silently stuck.
     aborted: bool = False
     abort_reason: str | None = None
+    # Option A phase 2: one receipt per producer stage actually executed this
+    # invocation (see :func:`_stage_receipt`) — empty on a resume-skip no-op.
+    stage_receipts: tuple[Mapping[str, Any], ...] = ()
+    # The _BudgetGuard's accumulated estimated cost for this drive (measured,
+    # never re-derived — see :attr:`_BudgetGuard.cost_usd`).
+    cost_usd_measured: float = 0.0
+    # Cumulative ICA turn accounting for the run (see :func:`_ica_turns`);
+    # ``measured`` is False whenever rf cannot yet know the true total.
+    ica_turns: Mapping[str, Any] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -430,6 +518,9 @@ class DriveState:
             "leg_bundle": dict(self.leg_bundle) if self.leg_bundle is not None else None,
             "aborted": self.aborted,
             "abort_reason": self.abort_reason,
+            "stage_receipts": [dict(r) for r in self.stage_receipts],
+            "cost_usd_measured": self.cost_usd_measured,
+            "ica_turns": dict(self.ica_turns) if self.ica_turns is not None else None,
         }
 
 
@@ -546,6 +637,7 @@ def drive_run(
     steps_skipped: list[str] = []
     milestones: list[str] = []
     notes: list[str] = []
+    receipts: list[dict[str, Any]] = []
 
     job = _build_job(ctx)
     if job_service is None:
@@ -563,10 +655,12 @@ def drive_run(
         if _has_file(rp.source_candidates):
             steps_skipped.append("discovery")
         else:
+            _started = now_iso()
             n = _discover(
                 ctx, rp, paths=paths, config=config, providers=providers, guard=guard
             )
             steps_run.append("discovery")
+            receipts.append(_stage_receipt("discovery", _started, rp.source_candidates))
             notes.append(f"discovery: {n} candidate(s)")
 
         # 2) Ingest -> source_cards/ (via run_job_tool; redacts internally) ------
@@ -574,8 +668,10 @@ def drive_run(
         if _has_glob(rp.sources, "*.md"):
             steps_skipped.append("ingest")
         else:
+            _started = now_iso()
             n = _ingest(ctx, rp, job=job, job_service=job_service, paths=paths)
             steps_run.append("ingest")
+            receipts.append(_stage_receipt("ingest", _started, rp.sources))
             notes.append(f"ingest: {n} source card(s)")
 
         # 3) Extraction -> extractions/ ------------------------------------------
@@ -585,8 +681,10 @@ def drive_run(
         else:
             from .extraction import extract_run
 
+            _started = now_iso()
             extract_run(ctx.run_id, paths=paths)
             steps_run.append("extraction")
+            receipts.append(_stage_receipt("extraction", _started, rp.extractions))
 
         # 4) Deterministic claim-mapping -> claims/claim_ledger.yaml -------------
         guard.check("claim_map")
@@ -595,8 +693,10 @@ def drive_run(
         else:
             from .claim_mapping import build_claim_ledger
 
+            _started = now_iso()
             build_claim_ledger(ctx.run_id, paths=paths)
             steps_run.append("claim_map")
+            receipts.append(_stage_receipt("claim_map", _started, rp.claim_ledger))
 
         # --- milestone: sources_ingested ----------------------------------------
         if _push(ctx.run_id, _MILESTONE_INGESTED, paths=paths):
@@ -611,8 +711,10 @@ def drive_run(
 
             # llm=False is authoritative for verifier compliance AND costs nothing
             # (design §4.1 step 5, FR-0).
+            _started = now_iso()
             synthesize_report(ctx.run_id, llm=False, paths=paths)
             steps_run.append("synthesize")
+            receipts.append(_stage_receipt("synthesize", _started, rp.report_draft))
 
         # 6) Deterministic verification -> reviews/verification.yaml -------------
         guard.check("verify")
@@ -623,9 +725,11 @@ def drive_run(
         else:
             from .verification import verify_report
 
+            _started = now_iso()
             vr = verify_report(ctx.run_id, paths=paths)
             verified = bool(vr.passed)
             steps_run.append("verify")
+            receipts.append(_stage_receipt("verify", _started, rp.verification))
         if verified and _push(ctx.run_id, _MILESTONE_VERIFIED, paths=paths):
             milestones.append(_MILESTONE_VERIFIED)
 
@@ -641,10 +745,12 @@ def drive_run(
 
             # Thread step 6's result: avoid recomputing verification while preserving
             # a draft bundle when that already-completed check did not pass.
+            _started = now_iso()
             result = build_bundle(ctx.run_id, verify=verified, paths=paths)
             bundle_path = result.bundle_path
             verified = bool(result.verified)
             steps_run.append("bundle")
+            receipts.append(_stage_receipt("bundle", _started, bundle_path))
     except BudgetExceeded as exc:
         return _abort_on_budget(
             ctx,
@@ -653,10 +759,12 @@ def drive_run(
             paths=paths,
             config=config,
             llm_legs=llm_legs,
+            guard=guard,
             steps_run=steps_run,
             steps_skipped=steps_skipped,
             milestones=milestones,
             notes=notes,
+            receipts=receipts,
         )
 
     # 8) CCDash execution event -> writebacks/ccdash_event.yaml --------------
@@ -664,8 +772,10 @@ def drive_run(
         steps_skipped.append("ccdash_event")
     else:
         try:
+            _started = now_iso()
             telemetry.emit_ccdash_event(ctx.run_id, paths=paths)
             steps_run.append("ccdash_event")
+            receipts.append(_stage_receipt("ccdash_event", _started, rp.ccdash_event))
         except Exception as exc:  # noqa: BLE001 — telemetry best-effort
             notes.append(f"ccdash_event skipped: {exc}")
 
@@ -705,6 +815,9 @@ def drive_run(
         verified=verified,
         bundle_path=bundle_path,
         notes=tuple(notes),
+        stage_receipts=tuple(receipts),
+        cost_usd_measured=guard.cost_usd,
+        ica_turns=_ica_turns(rp, llm_legs),
     )
 
 
@@ -721,10 +834,12 @@ def _abort_on_budget(
     paths: FoundryPaths,
     config: FoundryConfig,
     llm_legs: str,
+    guard: _BudgetGuard,
     steps_run: list[str],
     steps_skipped: list[str],
     milestones: list[str],
     notes: list[str],
+    receipts: list[Mapping[str, Any]] | None = None,
 ) -> DriveState:
     """Convert a :class:`BudgetExceeded` into a clean terminal abort (FR-11).
 
@@ -732,8 +847,11 @@ def _abort_on_budget(
     returns a terminal :class:`DriveState` (``status_derived ==
     "budget_exceeded"``, ``aborted=True``). Never re-raises and never leaves the
     run silently stuck — the breach is surfaced in both the on-disk record and
-    the returned state.
+    the returned state. Carries the receipts collected for whichever stages
+    ran before the breach, plus the guard's measured cost (Option A phase 2).
     """
+
+    receipts = list(receipts) if receipts else []
 
     reason = str(exc)
     record = {
@@ -768,6 +886,9 @@ def _abort_on_budget(
         notes=tuple(notes),
         aborted=True,
         abort_reason=reason,
+        stage_receipts=tuple(receipts),
+        cost_usd_measured=guard.cost_usd,
+        ica_turns=_ica_turns(rp, llm_legs),
     )
 
 
@@ -818,6 +939,7 @@ def _drive_ica_emit(
     steps_skipped: list[str] = []
     milestones: list[str] = []
     notes: list[str] = []
+    receipts: list[dict[str, Any]] = []
 
     # --- milestone: discovery_started (best-effort, never blocks) -----------
     if _push(ctx.run_id, _MILESTONE_DISCOVERY, paths=paths):
@@ -829,10 +951,12 @@ def _drive_ica_emit(
         if _has_file(rp.source_candidates):
             steps_skipped.append("discovery")
         else:
+            _started = now_iso()
             n = _discover(
                 ctx, rp, paths=paths, config=config, providers=providers, guard=guard
             )
             steps_run.append("discovery")
+            receipts.append(_stage_receipt("discovery", _started, rp.source_candidates))
             notes.append(f"discovery: {n} candidate(s)")
         guard.check("emit_legs")  # cost post-discovery + runtime, before emit
     except BudgetExceeded as exc:
@@ -843,10 +967,12 @@ def _drive_ica_emit(
             paths=paths,
             config=config,
             llm_legs="ica",
+            guard=guard,
             steps_run=steps_run,
             steps_skipped=steps_skipped,
             milestones=milestones,
             notes=notes,
+            receipts=receipts,
         )
     candidates = _load_candidates(rp)
 
@@ -923,11 +1049,13 @@ def _drive_ica_emit(
     }
 
     # 4) Redact (the single write chokepoint, D5) -> write -> return ---------
+    _started = now_iso()
     safe_bundle = governance.redact_payload(bundle, config=config)
     leg_path = rp.run / "leg_requests.yaml"
     leg_path.parent.mkdir(parents=True, exist_ok=True)
     dump_yaml(safe_bundle, leg_path)
     steps_run.append("emit_legs")
+    receipts.append(_stage_receipt("emit_legs", _started, leg_path))
     notes.append(
         f"emitted {len(carding_legs)} carding leg(s) + 1 claim_map leg -> {leg_path}"
     )
@@ -944,6 +1072,9 @@ def _drive_ica_emit(
         bundle_path=None,
         notes=tuple(notes),
         leg_bundle=leg_bundle,
+        stage_receipts=tuple(receipts),
+        cost_usd_measured=guard.cost_usd,
+        ica_turns=_ica_turns(rp, "ica"),
     )
 
 
@@ -1226,6 +1357,34 @@ def _escalate_sensitivity_gate(
 # ---------------------------------------------------------------------------
 
 
+def _brief_title_objective(rp: RunPaths) -> tuple[str, str]:
+    """Read ``(title, objective-paragraph)`` from the research brief.
+
+    Title comes from the frontmatter ``title`` field; the objective is the
+    paragraph immediately following ``**Objective.**`` in the brief body.
+    Never raises — an unreadable/missing brief yields ``("", "")`` so callers
+    fall back to ``(ctx.objective, "")``.
+    """
+
+    title = ""
+    objective = ""
+    try:
+        if rp.research_brief.exists():
+            from ..frontmatter import load_md
+
+            front, body = load_md(rp.research_brief)
+            if isinstance(front, Mapping):
+                t = front.get("title")
+                if isinstance(t, str):
+                    title = t
+            m = re.search(r"\*\*Objective\.\*\*\s*(.*?)\n\s*\n", body or "", re.DOTALL)
+            if m:
+                objective = m.group(1).strip()
+    except Exception:  # noqa: BLE001 — the brief is best-effort context here
+        pass
+    return title, objective
+
+
 def _discover(
     ctx: DriveContext,
     rp: RunPaths,
@@ -1242,41 +1401,100 @@ def _discover(
     records the candidate locators. The write routes through
     :func:`redact_payload` (D5). Each provider's ``estimated_cost_usd`` is fed
     into the :class:`_BudgetGuard` (SCHED-002) so a cost ceiling can trip.
+
+    Queries are derived deterministically from the brief (title + objective)
+    via :func:`discovery_relevance.build_queries`, and every hit is scored
+    against the brief with :func:`discovery_relevance.relevance` — the
+    on-topic gate calibrated in M3b. Off-topic hits are still recorded (under
+    ``rejected_candidates``) for audit but never reach ``source_candidates``,
+    so carding/ingest never sees them (see :func:`_load_candidates`).
     """
 
+    from .discovery_relevance import (
+        brief_bigrams,
+        brief_terms,
+        build_queries,
+        relevance,
+    )
     from .search_router.modes import MODES
     from .search_router.policy import resolve_chain
     from .search_router.providers.base import all_providers
+
+    title, objective = _brief_title_objective(rp)
+    if not title and not objective:
+        objective = ctx.objective
+
+    queries = build_queries(title, objective) or [ctx.objective]
+    terms = brief_terms(title, objective)
+    phrases = brief_bigrams(title, objective)
 
     providers_map = dict(providers) if providers is not None else all_providers()
     chain = resolve_chain("free_discovery", providers=providers_map)
     budget = MODES["free_discovery"].budget
     max_results = int(budget.get("max_urls_to_extract", 8))
 
-    hits: list[dict[str, Any]] = []
-    for pid in chain:
-        provider = providers_map.get(pid)
-        if provider is None or "discovery" not in getattr(provider, "roles", ()):  # noqa: E501
-            continue
-        try:
-            if not provider.available():
-                continue
-            res = provider.search(ctx.objective, max_results=max_results, constraints={})
-        except Exception:  # noqa: BLE001 — a provider must never break the drive
-            continue
-        if guard is not None:
-            guard.add_cost(getattr(res, "estimated_cost_usd", 0.0))
-        for hit in res.hits:
-            # res.hits is list[SearchHit]; the real path always has .to_dict().
-            # The Mapping guard keeps the fallback type-clean (Pyright no longer
-            # sees a bare ``dict(hit)`` on a non-mapping) without changing behavior.
-            if hasattr(hit, "to_dict"):
-                hits.append(hit.to_dict())
-            elif isinstance(hit, Mapping):
-                hits.append(dict(hit))
+    kept: list[dict[str, Any]] = []
+    rejected: list[dict[str, Any]] = []
+    seen_urls: set[str] = set()
 
-    _redacted_dump({"source_candidates": hits}, rp.source_candidates, config=config)
-    return len(hits)
+    for query in queries:
+        for pid in chain:
+            provider = providers_map.get(pid)
+            if provider is None or "discovery" not in getattr(provider, "roles", ()):  # noqa: E501
+                continue
+            try:
+                if not provider.available():
+                    continue
+                res = provider.search(query, max_results=max_results, constraints={})
+            except Exception:  # noqa: BLE001 — a provider must never break the drive
+                continue
+            if guard is not None:
+                guard.add_cost(getattr(res, "estimated_cost_usd", 0.0))
+            for hit in res.hits:
+                # res.hits is list[SearchHit]; the real path always has .to_dict().
+                # The Mapping guard keeps the fallback type-clean (Pyright no longer
+                # sees a bare ``dict(hit)`` on a non-mapping) without changing behavior.
+                if hasattr(hit, "to_dict"):
+                    hit_d = hit.to_dict()
+                elif isinstance(hit, Mapping):
+                    hit_d = dict(hit)
+                else:
+                    continue
+                url = str(hit_d.get("url") or "")
+                if url and url in seen_urls:
+                    continue
+                if url:
+                    seen_urls.add(url)
+                hit_d["query"] = query
+                hit_d["relevance"] = relevance(hit_d, terms, query, phrases)
+                if hit_d["relevance"]["on_topic"]:
+                    kept.append(hit_d)
+                else:
+                    rejected.append(hit_d)
+
+    # Round-robin across queries so one sub-topic cannot crowd out the rest.
+    by_query: dict[str, list[dict[str, Any]]] = {}
+    for hit_d in kept:
+        by_query.setdefault(str(hit_d.get("query")), []).append(hit_d)
+    interleaved: list[dict[str, Any]] = []
+    while any(by_query.values()) and len(interleaved) < max_results:
+        for q in queries:
+            if by_query.get(q) and len(interleaved) < max_results:
+                interleaved.append(by_query[q].pop(0))
+    kept = interleaved
+    rule = relevance({}, terms, queries[0] if queries else "", phrases)["rule"]
+    doc = {
+        "source_candidates": kept,
+        "rejected_candidates": rejected,
+        "discovery": {
+            "queries": queries,
+            "rule": rule,
+            "kept": len(kept),
+            "rejected": len(rejected),
+        },
+    }
+    _redacted_dump(doc, rp.source_candidates, config=config)
+    return len(kept)
 
 
 def _ingest(
@@ -1355,6 +1573,148 @@ def _build_job(ctx: DriveContext) -> Any:
         started_at=ts,
         completed_at=None,
     )
+
+
+def _digest_artifact(artifact: Path | None) -> str | None:
+    """Content-address a stage's producer output (Option A phase 2).
+
+    A file digests its raw bytes as ``"sha256:" + hexdigest``. A directory
+    digests the sorted ``"<name>:<file sha256>"`` lines of its immediate
+    regular files (non-recursive, matching the resume glob checks elsewhere
+    in this module) into one combined sha256. ``None`` when ``artifact`` is
+    absent or unreadable — never raises.
+    """
+
+    if artifact is None:
+        return None
+    try:
+        if artifact.is_file():
+            return "sha256:" + hashlib.sha256(artifact.read_bytes()).hexdigest()
+        if artifact.is_dir():
+            lines: list[str] = []
+            for child in artifact.iterdir():
+                if not child.is_file():
+                    continue
+                digest = hashlib.sha256(child.read_bytes()).hexdigest()
+                lines.append(f"{child.name}:{digest}")
+            if not lines:
+                return None
+            combined = "\n".join(sorted(lines))
+            return "sha256:" + hashlib.sha256(combined.encode("utf-8")).hexdigest()
+    except OSError:
+        return None
+    return None
+
+
+def _stage_receipt(stage: str, started_at: str, artifact: Path | None) -> dict[str, Any]:
+    """Build one per-stage receipt (Option A phase 2, appended at each
+    ``steps_run.append(...)`` site — never for a resume-skipped stage).
+
+    Every rf-side stage is deterministic and makes zero model calls by
+    construction, so ``turns_used`` is always ``0`` here with
+    ``turns_source == "deterministic_zero_model_calls"`` — the genuine ICA
+    leg turns are accounted separately by :func:`_ica_turns`, never invented
+    here.
+    """
+
+    return {
+        "stage": stage,
+        "started_at": started_at,
+        "finished_at": now_iso(),
+        "turns_used": 0,
+        "turns_source": "deterministic_zero_model_calls",
+        "artifact_digest": _digest_artifact(artifact),
+    }
+
+
+def _ica_turns(rp: RunPaths, llm_legs: str) -> dict[str, Any]:
+    """Cumulative ICA turn accounting for this run (Option A phase 2).
+
+    Reads the OPTIONAL fulfiller-written ``leg_receipts.yaml`` (schema
+    :data:`_LEG_RECEIPTS_SCHEMA`, see the module comment above it) — never
+    raises, never invents a turn count rf did not read. ``llm_legs == "ica"``
+    is special-cased: *this very call* is the emit, so any legs are freshly
+    dispatched and definitionally not yet fulfilled.
+    """
+
+    if llm_legs == "ica":
+        return {"measured": False, "total": None, "source": "awaiting_legs"}
+
+    receipts_path = rp.run / "leg_receipts.yaml"
+    legs_path = rp.run / "leg_requests.yaml"
+
+    if not receipts_path.exists():
+        if not legs_path.exists():
+            return {
+                "measured": True,
+                "total": 0,
+                "source": "deterministic: no ICA legs emitted",
+            }
+        return {
+            "measured": False,
+            "total": None,
+            "source": "ICA legs emitted but no leg_receipts.yaml",
+        }
+
+    try:
+        data = load_yaml(receipts_path)
+    except Exception:  # noqa: BLE001 — never raise out of this helper
+        data = None
+
+    malformed = {"measured": False, "total": None, "source": "leg_receipts.yaml malformed"}
+    if not isinstance(data, Mapping):
+        return malformed
+    legs = data.get("legs")
+    if not isinstance(legs, list) or not legs:
+        return malformed
+
+    by_leg_type: dict[str, int] = {}
+    total = 0
+    for leg in legs:
+        if not isinstance(leg, Mapping):
+            return malformed
+        turns = leg.get("turns_used")
+        if not isinstance(turns, int) or isinstance(turns, bool) or turns < 0:
+            return malformed
+        leg_type = str(leg.get("leg_type") or "unknown")
+        by_leg_type[leg_type] = by_leg_type.get(leg_type, 0) + turns
+        total += turns
+
+    # A partial receipt file (some emitted legs unreported) is not a measurement
+    # of the run's ICA turns: report it unmeasured rather than under-count.
+    requested_ids = _requested_leg_ids(legs_path)
+    reported_ids = {str(leg.get("id")) for leg in legs}
+    if requested_ids and not requested_ids <= reported_ids:
+        return {
+            "measured": False,
+            "total": None,
+            "partial_total": total,
+            "missing_legs": sorted(requested_ids - reported_ids),
+            "source": "leg_receipts.yaml partial",
+        }
+
+    return {
+        "measured": True,
+        "total": total,
+        "by_leg_type": by_leg_type,
+        "legs": len(legs),
+        "source": "leg_receipts.yaml",
+    }
+
+
+def _requested_leg_ids(legs_path: Path) -> set[str]:
+    """Leg ids from an emitted ``leg_requests.yaml`` (empty when absent/unreadable)."""
+
+    if not legs_path.exists():
+        return set()
+    try:
+        data = load_yaml(legs_path)
+    except Exception:  # noqa: BLE001 — never raise out of turn accounting
+        return set()
+    legs = data.get("legs") if isinstance(data, Mapping) else None
+    if not isinstance(legs, list):
+        return set()
+    return {str(leg.get("id")) for leg in legs if isinstance(leg, Mapping) and leg.get("id")}
 
 
 def _redacted_dump(obj: Any, path: Path, *, config: FoundryConfig) -> Path:

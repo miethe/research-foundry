@@ -50,6 +50,11 @@ verifier_checks:
   - id: report_has_frontmatter
     severity: error
 
+  # An empty claim ledger verifies nothing: a 0-claim run must not seal
+  # bundle_written/verified=true (finding node_01M38EDY9SJBWAH8VX53KH36EA).
+  - id: ledger_has_claims
+    severity: error
+
   - id: all_claim_ids_exist
     severity: error
 

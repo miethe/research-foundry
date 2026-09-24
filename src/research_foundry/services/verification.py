@@ -58,6 +58,7 @@ _DEFAULT_MATERIAL_CLAIM_TYPES = [
 
 _DEFAULT_VERIFIER_CHECKS = [
     {"id": "report_has_frontmatter", "severity": "error"},
+    {"id": "ledger_has_claims", "severity": "error"},
     {"id": "all_claim_ids_exist", "severity": "error"},
     {"id": "material_claims_have_claim_ids", "severity": "error"},
     {"id": "supported_claims_have_source_cards", "severity": "error"},
@@ -910,6 +911,19 @@ def verify_report(
         ledger = data if isinstance(data, dict) else {}
     claims = list(ledger.get("claims", []) or [])
     ledger_ids = {c.get("claim_id") for c in claims if c.get("claim_id")}
+
+    # 1b) ledger_has_claims — an empty ledger verifies nothing. A 0-claim run
+    # must not be able to seal bundle_written/verified=true (finding
+    # node_01M38EDY9SJBWAH8VX53KH36EA): without this check every downstream
+    # check below simply has nothing to iterate over and passes vacuously.
+    if claims:
+        add("ledger_has_claims", "pass", f"claim ledger has {len(claims)} claim(s)")
+    else:
+        add(
+            "ledger_has_claims",
+            "fail",
+            "claim ledger has no claims; an empty ledger verifies nothing",
+        )
 
     source_index = _index_source_cards(rp)
     report_sensitivity = front.get("sensitivity") if isinstance(front, dict) else None

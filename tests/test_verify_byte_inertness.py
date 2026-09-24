@@ -211,7 +211,8 @@ def test_term_index_injection_is_byte_inert_for_verify(
     dump_yaml(_inject_term_index(ledger), rp.claim_ledger)
     after = verify_report(run_id, paths=tmp_foundry)
 
-    assert len(before.checks) == 17, "guard is vacuous if the check table is empty/resized"
+    # 18 = the 17-check table plus `ledger_has_claims` (an empty ledger verifies nothing).
+    assert len(before.checks) == 18, "guard is vacuous if the check table is empty/resized"
 
     # Unchanged check table: same check ids, same order.
     assert [c.id for c in before.checks] == [c.id for c in after.checks]

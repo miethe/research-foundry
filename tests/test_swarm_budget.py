@@ -141,7 +141,7 @@ class _CostlySearxProvider:
             provider=self.id,
             role="discovery",
             status="success",
-            hits=[SearchHit(title="Doc A", url="https://example.org/a", source_type="other")],
+            hits=[SearchHit(title="Swarm budget demo topic doc A", url="https://example.org/a", source_type="other")],
             estimated_cost_usd=self._cost,
         )
 
@@ -300,8 +300,8 @@ def test_absent_budget_is_unbounded(tmp_foundry, tmp_path):
 def test_turn_cap_constraint_in_emitted_bundle(tmp_foundry):
     run_id = _planned_run(tmp_foundry)
     hits = [
-        SearchHit(title="Doc A", url="https://example.org/a", source_type="official_docs"),
-        SearchHit(title="Doc B", url="https://example.org/b", source_type="reputable_news"),
+        SearchHit(title="Swarm budget demo topic doc A", url="https://example.org/a", source_type="official_docs"),
+        SearchHit(title="Swarm budget demo topic doc B", url="https://example.org/b", source_type="reputable_news"),
     ]
     providers = {"searxng": _FakeSearxProvider(hits)}
 
@@ -333,9 +333,9 @@ def test_turn_cap_constraint_in_emitted_bundle(tmp_foundry):
 def test_carding_one_leg_per_source(tmp_foundry):
     run_id = _planned_run(tmp_foundry)
     hits = [
-        SearchHit(title="Doc A", url="https://example.org/a", source_type="official_docs"),
-        SearchHit(title="Doc B", url="https://example.org/b", source_type="reputable_news"),
-        SearchHit(title="Doc C", url="https://example.org/c", source_type="blog_or_forum"),
+        SearchHit(title="Swarm budget demo topic doc A", url="https://example.org/a", source_type="official_docs"),
+        SearchHit(title="Swarm budget demo topic doc B", url="https://example.org/b", source_type="reputable_news"),
+        SearchHit(title="Swarm budget demo topic doc C", url="https://example.org/c", source_type="blog_or_forum"),
     ]
     providers = {"searxng": _FakeSearxProvider(hits)}
 

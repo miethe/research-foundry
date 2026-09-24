@@ -1,0 +1,848 @@
+{
+ "l1_prior_art_evidence_for": {
+  "brief_md": "---\nschema_version: 0.1\ntype: research_brief\nid: brief_20260923_m3b_l1_prior_art_evidence_for\nintent_id: intent_research_20260923_m3b_l1_prior_art_evidence_for\ntitle: 'M3b L1: prior-art evidence for layered vs redundant agent handoffs under context erosion'\naudience: technical\nresearch_depth: standard\nquestions:\n  primary:\n  - id: rq_001\n    question: 'What does the evidence say about M3b L1: prior-art evidence for layered vs redundant agent\n      handoffs under context erosion?'\n  secondary: []\nsource_strategy:\n  include_source_types:\n  - official_docs\n  - peer_reviewed_papers\n  - standards\n  - reputable_news\n  - vendor_docs\n  - repo_readmes\n  - personal_notes\n  exclude_source_types:\n  - unsourced_social_posts\n  - SEO_content_farms\n  freshness:\n    required: true\n    max_age_days: 180\n    exceptions:\n    - foundational_theory\n    - historical_background\noutput_requirements:\n  format: markdown\n  include_claim_ledger: true\n  include_source_cards: true\n  include_inference_log: true\n  include_open_questions: true\n---\n\n# Research Brief: M3b L1: prior-art evidence for layered vs redundant agent handoffs under context erosion\n\n**Objective.** Prior-art evidence for the M3b Agentic Semiotics pilot (L1, after prereg freeze). Question: under controlled context erosion, do cost-matched layered handoffs (opaque record, controlled-English, relation triples, structured JSON with inline dictionary) improve a fresh LLM agent's recovery of project identity and state relative to four redundant copies of one controlled-English layer, while keeping historical description separate from present authority (expired or unverified requests must not be executed)? Gather published evidence on: redundancy vs diverse encodings for message survival (incl. nuclear waste warning / long-term semiotics literature), LLM robustness to schema/label removal, corruption and decoy injection in context, agent handoff and memory-summary formats, prompt-injection resistance of evidence-vs-instruction separation, and calibration/abstention of LLMs under missing evidence. Also bind the phase-1 prior claims (toy decoder experiments E1-E3: 0/4 vs 4/4 text-decoder removal recovery, 1032/1032 single-bit detection, self-consistent forgery passing its own checksum, Boolean authority checker on 12 stipulated fixtures) to the closest published evidence, marking each as supported, contradicted or unaddressed. No subject results are included.\n\n**Depth.** standard  |  **Audience.** technical\n\n## Questions\n\n- (rq_001) What does the evidence say about M3b L1: prior-art evidence for layered vs redundant agent handoffs under context erosion?\n",
+  "old_junk_candidates": [
+   {
+    "title": "UK Strategic Export Control List - GOV.UK",
+    "url": "https://assets.publishing.service.gov.uk/media/69415ba1f065108822537524/uk_export_control_list_2025.pdf",
+    "snippet": "Dec 16, 2025 ... Introduction. \u2022 UK Military List. \u2022 UK Dual-Use List. \u2022 Non-military Firearms List. \u2022 Human Rights List. \u2022 UK Security and Human Rights List.",
+    "provider": "searxng",
+    "rank": 1,
+    "score": 1.0,
+    "source_type": null,
+    "published_at": null
+   },
+   {
+    "title": "Full text of \"Financial Times , 1999, UK, English\" - Internet Archive",
+    "url": "https://archive.org/stream/FinancialTimes1999UKEnglish/Apr%2020%201999%2C%20Financial%20Times%2C%20%2320%2C%20UK%20%28en%29_djvu.txt",
+    "snippet": "months before companies in the most downtrodden industries like chemicals and steel, or ... in the Notes and the Fatal Agency Agreement, dated at of October 1.",
+    "provider": "searxng",
+    "rank": 2,
+    "score": 0.3333333333333333,
+    "source_type": null,
+    "published_at": null
+   },
+   {
+    "title": "Full text of \"Independent , 1998, Ireland, English\" - Internet Archive",
+    "url": "https://archive.org/stream/Independent1998IrelandEnglish/Jul%2015%201998%2C%20Independent%2C%20%233663%2C%20Ireland%20%28en%29_djvu.txt",
+    "snippet": "\u25a1Pn&e art mi In 1=0 jl lime of first visit. A carbon monoxide det\u00abtnr ... Drug is arguably more popular than ever before and price has dropped by about a fifth\u00a0...",
+    "provider": "searxng",
+    "rank": 3,
+    "score": 0.25,
+    "source_type": null,
+    "published_at": null
+   },
+   {
+    "title": "Full text of \"Financial Times , 1997, UK, English\" - Internet Archive",
+    "url": "https://archive.org/stream/FinancialTimes1997UKEnglish/Jun%2013%201997%2C%20Financial%20Times%2C%20%2313%2C%20UK%20%28en%29_djvu.txt",
+    "snippet": "Mr Mason examined the work and background of pro- duction supervisors in ... and psychological expression in film and art. The play has several funny\u00a0...",
+    "provider": "searxng",
+    "rank": 4,
+    "score": 0.2,
+    "source_type": null,
+    "published_at": null
+   },
+   {
+    "title": "Full text of \"Financial Times , 1998, UK, English\" - Internet Archive",
+    "url": "https://archive.org/stream/FinancialTimes1998UKEnglish/May%2009%201998%2C%20Financial%20Times%2C%20%239%2C%20UK%20%28en%29_djvu.txt",
+    "snippet": "... handover have resulted in an upsurge in crime and violence. That has ... This is the city-state of the art And it has recently taken its lesson on\u00a0...",
+    "provider": "searxng",
+    "rank": 5,
+    "score": 0.16666666666666666,
+    "source_type": null,
+    "published_at": null
+   },
+   {
+    "title": "Full text of \"Financial Times , 1992, UK, English\" - Internet Archive",
+    "url": "https://archive.org/stream/FinancialTimes1992UKEnglish/Oct%2019%201992%2C%20Financial%20Times%2C%20%232019%2C%20UK%20%28en%29_djvu.txt",
+    "snippet": "... art which enhances the work and adds to it farther layers of allusion. ... 1-741 9292 or ask your travel agent. IV \u00a3 a -r H m~ Supplement applies DO ex\u00a0...",
+    "provider": "searxng",
+    "rank": 6,
+    "score": 0.14285714285714285,
+    "source_type": null,
+    "published_at": null
+   },
+   {
+    "title": "Full text of \"Financial Times , 1997, UK, English\" - Internet Archive",
+    "url": "https://archive.org/stream/FinancialTimes1997UKEnglish/Sep%2020%201997%2C%20Financial%20Times%2C%20%2333020%2C%20UK%20%28en%29_djvu.txt",
+    "snippet": "1/we have obtained and recorded evidence of the identity of perron an ... survey of 20th century art shown \u25a1 ;- in Berlin earlier ihfe year, there\u00a0...",
+    "provider": "searxng",
+    "rank": 7,
+    "score": 0.125,
+    "source_type": null,
+    "published_at": null
+   },
+   {
+    "title": "Full text of \"Financial Times , 1993, UK, English\" - Internet Archive",
+    "url": "https://archive.org/stream/FinancialTimes1993UKEnglish/Nov%2023%201993%2C%20Financial%20Times%2C%20%2323%2C%20UK%20%28en%29_djvu.txt",
+    "snippet": "... in February and a handover in March- In response ... wfMto_r or not tfaefr aSvtoanKMHweL Mjftwfte Jog Iwefc sMBafcfeto 1 ngNiotoiT todtes m evidence\u00a0...",
+    "provider": "searxng",
+    "rank": 8,
+    "score": 0.1111111111111111,
+    "source_type": null,
+    "published_at": null
+   }
+  ],
+  "live_searxng": [
+   {
+    "query": "layered redundant agent handoff context erosion",
+    "title": "Types of Multi-Agent System Failures: 7 Common Failures | Splunk",
+    "snippet": "Aug 13, 2026 ... Every hand-off between agents puts your workflow's shared memory at risk. When one model's reply exceeds another's context window, critical\u00a0...",
+    "url": "https://www.splunk.com/en_us/blog/artificial-intelligence/multi-agent-system-failures.html"
+   },
+   {
+    "query": "layered redundant agent handoff context erosion",
+    "title": "When AI Acts: The Architecture Behind Agentic AI",
+    "snippet": "Dec 9, 2025 ... The Base Architecture: Four Layers, Four Contracts \u00b7 Layer 1: Data \u2014 Perceive What's True \u00b7 Layer 2: Agent \u2014 Decide What Should Happen \u00b7 Layer 3:\u00a0...",
+    "url": "https://pravitech.substack.com/p/agentic-ai-base-architecture"
+   },
+   {
+    "query": "layered redundant agent handoff context erosion",
+    "title": "How to Architect for Agentic AI | Bain & Company",
+    "snippet": "May 29, 2026 ... A2A is a handoff mechanism, not a networking layer\u2014agents passing tasks and context within a coordinated workflow, not across the enterprise.",
+    "url": "https://www.bain.com/insights/how-to-architect-for-agentic-ai/"
+   },
+   {
+    "query": "layered redundant agent handoff context erosion",
+    "title": "AI agent sprawl: What it is, why it happens, and how to stop it",
+    "snippet": "Jun 4, 2026 ... Redundant agents drain budgets in ways that never appear on a single line item ... Stopping it requires a centralized agent registry, tiered\u00a0...",
+    "url": "https://www.kore.ai/blog/what-is-ai-agent-sprawl"
+   },
+   {
+    "query": "layered redundant agent handoff context erosion",
+    "title": "Secure Agentic System Design - A Trait-Based Approach | CSA",
+    "snippet": "Aug 7, 2025 ... Two instances of the same agent code may be considered separate agents when they operate in different contexts or with different data sources\u00a0...",
+    "url": "https://cloudsecurityalliance.org/artifacts/secure-agentic-system-design"
+   },
+   {
+    "query": "layered redundant agent handoff context erosion",
+    "title": "How to Build an Agentic Operating System with Claude Code",
+    "snippet": "Apr 30, 2026 ... ... context layer so future agents can learn from them. Memory can be ... When one agent finishes a task and hands off to another, the handoff needs\u00a0...",
+    "url": "https://www.mindstudio.ai/blog/how-to-build-agentic-operating-system-claude-code"
+   },
+   {
+    "query": "layered redundant agent handoff context erosion",
+    "title": "How AI is replacing the analytical hierarchy in enterprise software",
+    "snippet": "Apr 9, 2026 ... Every handoff loses context. This is especially true in categories ... layer, you're precomputing the context that agents need to act.",
+    "url": "https://www.insightpartners.com/ideas/ai-is-replacing-the-analytical-hierarchy-in-enterprise-software/"
+   },
+   {
+    "query": "layered redundant agent handoff context erosion",
+    "title": "What Is Agentic AI: The Next Frontier in Autonomous Systems",
+    "snippet": "The word \u201cagentic\u201d comes from \u201cagent,\u201d which in this context means a ... This is the execution layer, where the agent's intentions are translated into effects in\u00a0...",
+    "url": "https://www.redwood.com/resource/what-is-agentic-ai/"
+   },
+   {
+    "query": "redundancy diverse encoding message survival",
+    "title": "How Redundant are Redundant Encodings? Blindness in the Wild ...",
+    "snippet": "Jun 15, 2023 ... of redundant encoding, this does not mean that rich feature sets can ... mate Survival in a Longitudinal Cohort of Patients With Lung Cancer.",
+    "url": "https://dho.stanford.edu/wp-content/uploads/redundant.pdf"
+   },
+   {
+    "query": "redundancy diverse encoding message survival",
+    "title": "Time Redundancy - an overview | ScienceDirect Topics",
+    "snippet": "The encoding techniques that do not use any redundancy or metadata are termed as irredundant encoding techniques. By comparison, several encoding techniques\u00a0...",
+    "url": "https://www.sciencedirect.com/topics/computer-science/time-redundancy"
+   },
+   {
+    "query": "redundancy diverse encoding message survival",
+    "title": "Survival processing occupies the central bottleneck of cognitive ...",
+    "snippet": "Aug 11, 2023 ... After a short distractor task, an unexpected free-recall test follows, typically resulting in a significant memory advantage for word material\u00a0...",
+    "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC10867088/"
+   },
+   {
+    "query": "redundancy diverse encoding message survival",
+    "title": "Redundant language \u2014 fluff, or cultural bridge?",
+    "snippet": "Jul 2, 2024 ... Redundancy helps people with different first languages communicate ... Redundancy helps messages survive the journey. Even for native\u00a0...",
+    "url": "https://www.dothewords.com/post/redundant-language-fluff-or-cultural-bridge"
+   },
+   {
+    "query": "redundancy diverse encoding message survival",
+    "title": "Redundancy and Failover Systems - LinkedIn",
+    "snippet": "n Build robust IT infrastructure with advanced redundancy techniques. Explore Azure disaster recovery strategies for diverse business needs.\\n.",
+    "url": "https://www.linkedin.com/top-content/technology/it-infrastructure-upgrades/redundancy-and-failover-systems/"
+   },
+   {
+    "query": "redundancy diverse encoding message survival",
+    "title": "This clever redundancy lets QR codes survive scratches, stickers ...",
+    "snippet": "Sep 1, 2026 ... That feels strange if you assume every tiny black-and-white square carries a unique, irreplaceable piece of the message. ... different jobs.",
+    "url": "https://www.makeuseof.com/this-clever-redundancy-lets-qr-codes-survive-scratches-stickers-and-missing-pieces/"
+   },
+   {
+    "query": "redundancy diverse encoding message survival",
+    "title": "A Survey of the Past, Present, and Future of Erasure Coding for ...",
+    "snippet": "Jan 8, 2025 ... Erasure coding is a known redundancy technique that has been popularly deployed in modern storage systems to protect against failures.",
+    "url": "https://dl.acm.org/doi/10.1145/3708994"
+   },
+   {
+    "query": "redundancy diverse encoding message survival",
+    "title": "Illustration of channel coding. Given an input message X, the...",
+    "snippet": "Given a binary message X \u2208 {0, 1} D of length D, a channel encoder produces a redundant message X \u2208 {0, 1} N of length N > D, which can be used to recover X\u00a0...",
+    "url": "https://www.researchgate.net/figure/llustration-of-channel-coding-Given-an-input-message-X-the-channel-encoder-produces-a_fig1_338593795"
+   },
+   {
+    "query": "nuclear waste warning long term semiotic literature",
+    "title": "Long-term nuclear waste warning messages - Wikipedia",
+    "snippet": "Long-term nuclear waste warning messages are communication attempts intended to deter human intrusion at nuclear waste repositories in the far future,\u00a0...",
+    "url": "https://en.wikipedia.org/wiki/Long-term_nuclear_waste_warning_messages"
+   },
+   {
+    "query": "nuclear waste warning long term semiotic literature",
+    "title": "The interesting puzzle of 'Nuclear semiotics' and how to warn future ...",
+    "snippet": "Feb 10, 2020 ... r/CreepyWikipedia - Long-term nuclear waste warning messages are meant to warn future. 349 upvotes \u00b7 20 comments\u00a0...",
+    "url": "https://www.reddit.com/r/linguistics/comments/f1unpp/this_place_is_not_a_place_of_honor_the/"
+   },
+   {
+    "query": "nuclear waste warning long term semiotic literature",
+    "title": "How to build a nuclear warning for 10,000 years' time - BBC",
+    "snippet": "Aug 3, 2020 ... The nuclear waste buried far beneath the earth will be toxic for thousands of years. How do you build a warning now that can be understood\u00a0...",
+    "url": "https://www.bbc.com/future/article/20200731-how-to-build-a-nuclear-warning-for-10000-years-time"
+   },
+   {
+    "query": "nuclear waste warning long term semiotic literature",
+    "title": "A Nuclear Warning Designed to Last 10,000 Years - Hyperallergic",
+    "snippet": "Jul 21, 2016 ... The concepts are just part of ongoing semiotic studies to communicate across thousands of years that we in the 21st century have interred the\u00a0...",
+    "url": "https://hyperallergic.com/a-nuclear-warning-designed-to-last-10000-years/"
+   },
+   {
+    "query": "nuclear waste warning long term semiotic literature",
+    "title": "Written in Thorns - Write Place",
+    "snippet": "... nuclear semiotics\u2014the long-term warning system messaging nuclear waste. Brill's intention was to use architecture to create a sense of sinister foreboding\u00a0...",
+    "url": "https://writeplace.org/written-in-thorns/"
+   },
+   {
+    "query": "nuclear waste warning long term semiotic literature",
+    "title": "Talking to our future selves \u2014 Long-term nuclear waste warning ...",
+    "snippet": "Apr 16, 2020 ... In the quest to construct long-term nuclear waste warning messages lasting millennia into the future, we find the very first attempts\u00a0...",
+    "url": "https://thelanguagecloset.com/2020/04/16/talking-to-our-future-selves-long-term-nuclear-waste-warning-messages/"
+   },
+   {
+    "query": "nuclear waste warning long term semiotic literature",
+    "title": "The Half-Life of Caution | Sydney Review of Books",
+    "snippet": "Aug 14, 2023 ... Nuclear semiotics is the name for the study of long-term nuclear waste warning messages. It is the study of how to deter curious humans 400\u00a0...",
+    "url": "https://sydneyreviewofbooks.com/reviews/the-half-life-of-caution"
+   },
+   {
+    "query": "nuclear waste warning long term semiotic literature",
+    "title": "Thomas Sebeok, Umberto Eco and the Semiotics of Nuclear Waste",
+    "snippet": "Feb 2, 2025 ... ... long-lasting warning system must be designed. This report is a semiotic analysis of the problem, examining it in terms of the science or\u00a0...",
+    "url": "https://progressivegeographies.com/2025/02/02/thomas-sebeok-umberto-eco-and-the-semiotics-of-nuclear-waste/"
+   },
+   {
+    "query": "robustness schema label removal",
+    "title": "EVOSCHEMA: TOWARDS TEXT-TO-SQL ROBUSTNESS AGAINST ...",
+    "snippet": "Mar 11, 2026 ... label = '-' in WHERE clause, while the \u201cw/o ... It indicates simpler table schema is beneficial for models to select columns, as removing\u00a0...",
+    "url": "https://arxiv.org/html/2603.10697v1"
+   },
+   {
+    "query": "robustness schema label removal",
+    "title": "A robust natural language text-to-SQL generation framework ... - PMC",
+    "snippet": "Removing the schema sorting mechanism from the Question-Guided Schema ... We compute label and relationship relevance using question-to-schema attention:\u00a0...",
+    "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC12953869/"
+   },
+   {
+    "query": "robustness schema label removal",
+    "title": "Re-appraising the Schema Linking for Text-to-SQL - ACL Anthology",
+    "snippet": "Jul 9, 2023 ... on this schema linking module, which degrade their robustness. ... common exact match schema linking labels: COL and TABLE. Figure 8\u00a0...",
+    "url": "https://aclanthology.org/2023.findings-acl.53.pdf"
+   },
+   {
+    "query": "robustness schema label removal",
+    "title": "No Subclass Left Behind: Fine-Grained Robustness in Coarse ...",
+    "snippet": "is highly nonuniform\u2014knowledge of subclass labels can improve robust performance. ... human-provided schema. On U-MNIST, 60% of trials of GEORGE partition\u00a0...",
+    "url": "https://papers.neurips.cc/paper_files/paper/2020/file/e0688d13958a19e087e123148555e4b4-Paper.pdf"
+   },
+   {
+    "query": "robustness schema label removal",
+    "title": "What if Schema.org is just\u2026 Labels? - Jono Alderson",
+    "snippet": "Nov 3, 2024 ... I've encouraged brands to invest in schema markup, to label their ... I'm not suggesting that we abandon or remove our structured data\u00a0...",
+    "url": "https://www.jonoalderson.com/conjecture/what-if-schema-org-is-just-labels/"
+   },
+   {
+    "query": "robustness schema label removal",
+    "title": "A Systematic Evaluation of Node Embedding Robustness",
+    "snippet": "The del_di strategy applies exclusively to attributed graphs and randomly selects edges for removal where the incident nodes share the same label. Finally\u00a0...",
+    "url": "https://proceedings.mlr.press/v198/mara22a/mara22a.pdf"
+   },
+   {
+    "query": "robustness schema label removal",
+    "title": "DR.SPIDER: A DIAGNOSTIC EVALUATION BENCH",
+    "snippet": "We consider three DB perturbations: schema-synonym, schema ... Our work aims at addressing it by providing a diagnostic robustness evaluation platform and\u00a0...",
+    "url": "https://cdn.amazon.science/07/5b/437a712f4361a3f4ab708909abd4/dr.Spider-%20A%20diagnostic%20evaluation%20benchmark%20towards%20text-to-SQL%20robustness.pdf"
+   },
+   {
+    "query": "robustness schema label removal",
+    "title": "Schema - Memgraph",
+    "snippet": "Label Changes on Nodes with Edges: Changing labels on a node with existing edges can invalidate large parts of the schema. \u00b7 Edge Property Type Changes:\u00a0...",
+    "url": "https://memgraph.com/docs/querying/schema"
+   },
+   {
+    "query": "corruption decoy injection context",
+    "title": "What Is a Prompt Injection Attack? Explained - Commvault",
+    "snippet": "A proactive security tactic that uses decoys to deceive attackers, diverting them toward fake assets while generating alerts before actual systems are\u00a0...",
+    "url": "https://www.commvault.com/explore/prompt-injection-attacks"
+   },
+   {
+    "query": "corruption decoy injection context",
+    "title": "Adversaries Leverage AI for Vulnerability Exploitation, Augmented ...",
+    "snippet": "May 11, 2026 ... In late March 2026, the cyber crime threat actor \"TeamPCP\" (aka UNC6780) claimed responsibility for multiple supply chain compromises of popular\u00a0...",
+    "url": "https://cloud.google.com/blog/topics/threat-intelligence/ai-vulnerability-exploitation-initial-access"
+   },
+   {
+    "query": "corruption decoy injection context",
+    "title": "What Is Sandboxing? - Palo Alto Networks",
+    "snippet": "Advanced threats, including APTs and commodity malware like Emotet or Cobalt Strike, use process hollowing, DLL injection, and reflective loading to execute\u00a0...",
+    "url": "https://www.paloaltonetworks.com/cyberpedia/sandboxing"
+   },
+   {
+    "query": "corruption decoy injection context",
+    "title": "AI Security in 2026: Threats, Core Principles & Defenses - Radware",
+    "snippet": "Prompt injection is a unique threat for large language models and conversational AI, where attackers embed malicious input directly into prompts or\u00a0...",
+    "url": "https://www.radware.com/cyberpedia/ai-security/"
+   },
+   {
+    "query": "corruption decoy injection context",
+    "title": "Poster Archive - AI Village",
+    "snippet": "These agents were susceptible to prompt injection from attacker-controlled repository content. In first glace, the impact looked almost boring: an attacker\u00a0...",
+    "url": "https://aivillage.org/posters/"
+   },
+   {
+    "query": "corruption decoy injection context",
+    "title": "The Hidden Threat in Plain Text: Attacking RAG Data Loaders",
+    "snippet": "Using an automated toolkit implementing 19 stealthy injection techniques, we test five popular data loaders, finding a 74.4% attack success rate across 357\u00a0...",
+    "url": "https://dl.acm.org/doi/10.1145/3733799.3762976"
+   },
+   {
+    "query": "corruption decoy injection context",
+    "title": "The Double-Edged Sword of Generative AI Security: 2025 Guide",
+    "snippet": "... injection, and prevent replay attacks. Integrate active deception for AI misuse detection: Seed environments with lure data or decoy APIs to detect\u00a0...",
+    "url": "https://www.oligo.security/academy/the-double-edged-sword-of-generative-ai-security-2025-guide"
+   },
+   {
+    "query": "corruption decoy injection context",
+    "title": "Digital Shadow Reconnaissance - Identity Management Institute\u00ae",
+    "snippet": "Aug 26, 2025 ... ... decoy information, and corrupted data in paste sites. Automated de ... Decoy node injection into public friend graphs is an advanced\u00a0...",
+    "url": "https://identitymanagementinstitute.org/digital-shadow-reconnaissance/"
+   },
+   {
+    "query": "agent handoff memory summary format",
+    "title": "Agent memory | OpenAI Agents SDK - GitHub Pages",
+    "snippet": "Memory isolation is based on MemoryLayoutConfig , not on agent name. Agents with the same layout and the same memory conversation ID share one memory\u00a0...",
+    "url": "https://openai.github.io/openai-agents-js/guides/sandbox-agents/memory/"
+   },
+   {
+    "query": "agent handoff memory summary format",
+    "title": "Is anyone else basically becoming their agent's memory by hand",
+    "snippet": "Jul 10, 2026 ... Keep stable project facts and commands in AGENTS.md /real scripts; keep only transient session state in the handoff. Rotate old handoffs to an\u00a0...",
+    "url": "https://www.reddit.com/r/AI_Agents/comments/1us01nt/is_anyone_else_basically_becoming_their_agents/"
+   },
+   {
+    "query": "agent handoff memory summary format",
+    "title": "AI agent memory: why your agent forgets, and how to make sure it ...",
+    "snippet": "Aug 20, 2026 ... When a run breaks mid-task \u2014 error, timeout, handoff to a different agent \u2014 the resuming agent finds what it needs. Not a reconstructed summary.",
+    "url": "https://graph.digital/guides/ai-agents/memory"
+   },
+   {
+    "query": "agent handoff memory summary format",
+    "title": "AI Agent Memory and Personal Context - Dossier AI",
+    "snippet": "Jul 29, 2026 ... When agents start coordinating with other agents, memory becomes a basic requirement. Your agent should not negotiate a meeting, draft an answer\u00a0...",
+    "url": "https://dossierai.ca/ai-agent-memory"
+   },
+   {
+    "query": "agent handoff memory summary format",
+    "title": "Agent handoff document: pass a coding task between AI agents",
+    "snippet": "Sep 6, 2026 ... The nine sections in the template on this page. The two that are most often missing and most valuable are \"commands run and results\" (so the\u00a0...",
+    "url": "https://docs-md.com/agent-handoff-document"
+   },
+   {
+    "query": "agent handoff memory summary format",
+    "title": "Handoffs: passing work between agents without losing the plot",
+    "snippet": "Jul 20, 2026 ... A handoff passes state sideways between agents, recovery passes it forward in time to resume a dead run, and memory persists it so it survives\u00a0...",
+    "url": "https://paelladoc.com/blog/agent-handoffs/"
+   },
+   {
+    "query": "agent handoff memory summary format",
+    "title": "What Is an Agent Handoff? How AI Agents Pass Work (2026)",
+    "snippet": "HANDOFF NOTE research agent -> drafting agent GOAL Write the Q3 renewal summary for the Riverside account. ... agent memory, a project, or a handoff note.",
+    "url": "https://www.taskade.com/wiki/ai-agents/agent-handoff"
+   },
+   {
+    "query": "agent handoff memory summary format",
+    "title": "AI Agent Handoff: Why Context Breaks & How to Fix It | XTrace",
+    "snippet": "Feb 20, 2026 ... This is what AI agent handoff should look like. Not a context dump. Not a summary. A structured briefing backed by queryable memory. How Does\u00a0...",
+    "url": "https://xtrace.ai/blog/ai-agent-context-handoff"
+   },
+   {
+    "query": "prompt injection resistance instruction separation",
+    "title": "The Comprehensive Guide to Prompt Injection Attacks in 2026 | Sysdig",
+    "snippet": "Aug 7, 2026 ... A prompt injection is a cyberattack that manipulates a large language model or AI agent into executing an attacker's instructions instead of\u00a0...",
+    "url": "https://www.sysdig.com/learn-cloud-native/prompt-injection"
+   },
+   {
+    "query": "prompt injection resistance instruction separation",
+    "title": "Why AI Keeps Falling for Prompt Injection Attacks - IEEE Spectrum",
+    "snippet": "Jan 21, 2026 ... Prompt injection is a method of tricking LLMs into doing things they are normally prevented from doing. A user writes a prompt\u00a0...",
+    "url": "https://spectrum.ieee.org/prompt-injection-attack"
+   },
+   {
+    "query": "prompt injection resistance instruction separation",
+    "title": "Principled Isolation Patterns for Prompt\u2011Injection\u2011Resilient LLM Agents",
+    "snippet": "Jun 16, 2025 ... In a prompt injection, an adversary inserts malicious instructions into the natural language input that the agent processes, causing the LLM to\u00a0...",
+    "url": "https://medium.com/@adnanmasood/the-sandboxed-mind-principled-isolation-patterns-for-prompt-injection-resilient-llm-agents-c14f1f5f8495"
+   },
+   {
+    "query": "prompt injection resistance instruction separation",
+    "title": "What Is a Prompt Injection Attack? [Examples & Prevention]",
+    "snippet": "A prompt injection attack is a GenAI security threat where an attacker deliberately crafts and inputs deceptive text into a large language model (LLM) to\u00a0...",
+    "url": "https://www.paloaltonetworks.com/cyberpedia/what-is-a-prompt-injection-attack"
+   },
+   {
+    "query": "prompt injection resistance instruction separation",
+    "title": "PromptGuard a structured framework for injection resilient language ...",
+    "snippet": "Jan 9, 2026 ... Prompt injection attacks threaten the reliability of large language models (LLMs) by embedding adversarial instructions that override\u00a0...",
+    "url": "https://www.nature.com/articles/s41598-025-31086-y"
+   },
+   {
+    "query": "prompt injection resistance instruction separation",
+    "title": "Why Prompt Injection Attacks Are GenAI's #1 Vulnerability - Galileo AI",
+    "snippet": "Apr 28, 2026 ... Direct prompt injection occurs when someone submits malicious instructions through the model's interface, such as chat inputs, form fields, API\u00a0...",
+    "url": "https://galileo.ai/blog/ai-prompt-injection-attacks-detection-and-prevention"
+   },
+   {
+    "query": "prompt injection resistance instruction separation",
+    "title": "Preventing Adversarial Prompt Injections with LLM Guardrails",
+    "snippet": "Dec 10, 2024 ... Prompt injection occurs when malicious actors manipulate an LLM's behavior by inserting carefully crafted instructions within seemingly\u00a0...",
+    "url": "https://kili-technology.com/blog/preventing-adversarial-prompt-injections-with-llm-guardrails"
+   },
+   {
+    "query": "prompt injection resistance instruction separation",
+    "title": "Boris Cherny's Post - LinkedIn",
+    "snippet": "Sep 10, 2026 ... But if you layer in a prompt injection probe (which is enabled for all Claude traffic by default, for free) and auto mode (enabled by default\u00a0...",
+    "url": "https://www.linkedin.com/posts/bcherny_prompt-injection-is-the-security-risk-i-get-activity-7503911881066070016-iITB"
+   },
+   {
+    "query": "calibration abstention llms missing",
+    "title": "Calibrated Abstention and Post-Refusal Clarification via Verifiable RL",
+    "snippet": "Apr 18, 2026 ... ... abstain, but also explain what is missing. ... Importantly, we do not employ additional prompt engineering to further enhance LLM abstention\u00a0...",
+    "url": "https://arxiv.org/html/2604.17073v1"
+   },
+   {
+    "query": "calibration abstention llms missing",
+    "title": "Probabilities of Chat LLMs Are Miscalibrated but Still Predict...",
+    "snippet": "Sep 12, 2024 ... This suggests that within the current fine-tuning paradigm, we can expect correctness prediction but not calibration to improve as LLM\u00a0...",
+    "url": "https://openreview.net/forum?id=E6LOh5vz5x"
+   },
+   {
+    "query": "calibration abstention llms missing",
+    "title": "Know Your Limits: A Survey of Abstention in Large Language Models",
+    "snippet": "Jun 27, 2025 ... ... abstention typically rely on calibration techniques, including linguistic calibration ... calibrating the uncertainty of LLMs. Jiang et al. (2021)\u00a0...",
+    "url": "https://direct.mit.edu/tacl/article/doi/10.1162/tacl_a_00754/131566/Know-Your-Limits-A-Survey-of-Abstention-in-Large"
+   },
+   {
+    "query": "calibration abstention llms missing",
+    "title": "Risk-Constrained Sample-then-Filter in Large Language Models",
+    "snippet": "If the risk level cannot be satisfied within the cap, we abstain; otherwise, the calibrated sampling budget becomes the minimum requirements at test time. Then,\u00a0...",
+    "url": "https://openreview.net/forum?id=kJmLmOvwLC"
+   },
+   {
+    "query": "calibration abstention llms missing",
+    "title": "MediQ: Question-Asking LLMs and a Benchmark for Reliable ...",
+    "snippet": "We show that adapting LLMs to interactive information-seeking settings is nontrivial, and propose an abstention module to better estimate model confidence and\u00a0...",
+    "url": "https://stellalisy.com/projects/mediQ/"
+   },
+   {
+    "query": "calibration abstention llms missing",
+    "title": "Calibration as a First-Class Criterion in LLM Evaluation - arXiv",
+    "snippet": "16 hours ago ... For most benchmarks, the necessary calibration metrics are already available \u2013 all that is missing is the community standard to report them.",
+    "url": "https://arxiv.org/html/2609.26489v1"
+   },
+   {
+    "query": "calibration abstention llms missing",
+    "title": "AbstentionBench: A Holistic Benchmark for LLM Abstention - GitHub",
+    "snippet": "In our accompanying paper, we find that abstention remains a key problem even for frontier LLMs, with model scale having almost no effect. Importantly,\u00a0...",
+    "url": "https://github.com/facebookresearch/AbstentionBench"
+   },
+   {
+    "query": "calibration abstention llms missing",
+    "title": "Abstention in LLMs is a threshold policy, not a post-hoc filter - LinkedIn",
+    "snippet": "6 days ago ... ... abstain is a liability that calibration dashboards built on token log-probabilities alone will not catch. This paper demonstrates that\u00a0...",
+    "url": "https://www.linkedin.com/posts/ggospodinov_causal-evidence-that-language-models-use-activity-7506404746732126210-xczl"
+   }
+  ]
+ },
+ "l2_bind_pass_1_results": {
+  "brief_md": "---\nschema_version: 0.1\ntype: research_brief\nid: brief_20260923_m3b_l2_bind_pass_1_results\nintent_id: intent_research_20260923_m3b_l2_bind_pass_1_results\ntitle: 'M3b L2: bind pass-1 results and methods finding (v1 closed, v2 chartered)'\naudience: technical\nresearch_depth: standard\nquestions:\n  primary:\n  - id: rq_001\n    question: 'What does the evidence say about M3b L2: bind pass-1 results and methods finding (v1 closed,\n      v2 chartered)?'\n  secondary: []\nsource_strategy:\n  include_source_types:\n  - official_docs\n  - peer_reviewed_papers\n  - standards\n  - reputable_news\n  - vendor_docs\n  - repo_readmes\n  - personal_notes\n  exclude_source_types:\n  - unsourced_social_posts\n  - SEO_content_farms\n  freshness:\n    required: true\n    max_age_days: 180\n    exceptions:\n    - foundational_theory\n    - historical_background\noutput_requirements:\n  format: markdown\n  include_claim_ledger: true\n  include_source_cards: true\n  include_inference_log: true\n  include_open_questions: true\n---\n\n# Research Brief: M3b L2: bind pass-1 results and methods finding (v1 closed, v2 chartered)\n\n**Objective.** Results binding for the M3b Agentic Semiotics pilot (L2, PREREG section 10, after pass 1). Bind the pass-1 scored results (miethe/research-lab commit e01808e, docs/m3b/p1-pass1/scores: pass1-report.json, pass1-scores.jsonl, pass1-score-receipt.json; 216 cells, 0 model calls in scoring) and the methods finding from the A1 pass-1 analysis, the A1 section-9 amendment proposal and the A1r cross-family review (commits 4bd8c08, e7a397c, docs/m3b/a1/). Measured: 80/216 responses were Markdown-fenced JSON (strict-invalid), gemini-3.5-flash 0/54 valid at the 4,096-token cap, sonnet layered-design refusals concentrated, luna 54/54 parsed; valid primary cells were at the R=1 ceiling. Decision: v1 closed without a pass-2 amendment; prereg v2 chartered. Verify each stated count against the committed artifacts and record which H1-H3 contrasts are inconclusive because of panel incompleteness. No new subject calls.\n\n**Depth.** standard  |  **Audience.** technical\n\n## Questions\n\n- (rq_001) What does the evidence say about M3b L2: bind pass-1 results and methods finding (v1 closed, v2 chartered)?\n",
+  "old_junk_candidates": [
+   {
+    "title": "How to Verify Consistency of Probabilistic Claims - arXiv",
+    "url": "https://arxiv.org/pdf/2608.11181",
+    "snippet": "Aug 12, 2026 ... This problem is of interest for AI safety, when safety is derived from honesty about probabilistic predictions of unwanted outcomes potentially\u00a0...",
+    "provider": "searxng",
+    "rank": 1,
+    "score": 1.0,
+    "source_type": null,
+    "published_at": null
+   },
+   {
+    "title": "Sourcebook for Methods of Analysis for Biomass and Biomass ...",
+    "url": "https://docs.nlr.gov/docs/legosti/old/3548.pdf",
+    "snippet": "Aug 23, 1988 ... Page 1. Page 2. Page 3. Page 4. Contents. Introduction ... results, the sam pling equipment available, the quantity to be represented by the\u00a0...",
+    "provider": "searxng",
+    "rank": 2,
+    "score": 0.5,
+    "source_type": null,
+    "published_at": null
+   },
+   {
+    "title": "Agentic Cryptographic Debt: Repository-Level Measurement of Post ...",
+    "url": "https://www.mdpi.com/2073-431X/15/9/625",
+    "snippet": "Post-quantum migration is becoming binding for regulated systems, and delegating it to AI coding assistants is a plausible response.",
+    "provider": "searxng",
+    "rank": 3,
+    "score": 0.3333333333333333,
+    "source_type": null,
+    "published_at": null
+   },
+   {
+    "title": "DEPARTMENT OF HOUSING AND URBAN DEV ft O l^ ^ j - GovInfo",
+    "url": "https://www.govinfo.gov/content/pkg/CHRG-95hhrg87345Op8/pdf/CHRG-95hhrg87345Op8.pdf",
+    "snippet": "It is often said that.one Congress cannot bind another. In a limited ... b92:-2 1-,92>H0:2 0c9,0.9l2 6-25>2 6H-aC72 b92 02 ,906-:0bC92 I,-.,012 >-2.",
+    "provider": "searxng",
+    "rank": 4,
+    "score": 0.2,
+    "source_type": null,
+    "published_at": null
+   },
+   {
+    "title": "Proceedings of the Chornobyl Phytoremediation and Biomass ...",
+    "url": "https://rosap.ntl.bts.gov/view/dot/42161/dot_42161_DS1.pdf",
+    "snippet": "Page 1. Proceedings of the Chornobyl. Phytoremediation and Biomass. Energy Conversion Workshop. February 23-25, 1998. Chomobyl Center for Nuclear Safety\u00a0...",
+    "provider": "searxng",
+    "rank": 5,
+    "score": 0.16666666666666666,
+    "source_type": null,
+    "published_at": null
+   },
+   {
+    "title": "PDF document - device.report",
+    "url": "https://device.report/m/e07cf066d410b41d4fb7881afc8866b94d6478632a375a417abf0028c917b64e",
+    "snippet": "Read this PDF document online, download the original file, and browse related details on device.report.",
+    "provider": "searxng",
+    "rank": 6,
+    "score": 0.1,
+    "source_type": null,
+    "published_at": null
+   },
+   {
+    "title": "2020 ASPHO Conference Paper and Poster Index",
+    "url": "https://onlinelibrary.wiley.com/doi/10.1002/pbc.28321",
+    "snippet": "Apr 28, 2020 ... Primary tumors were varied (hematological (74%), bone and soft tissue (23%), and brain (3%)). Results: The mutation burden of pediatric tMN (28\u00a0...",
+    "provider": "searxng",
+    "rank": 7,
+    "score": 0.09090909090909091,
+    "source_type": null,
+    "published_at": null
+   },
+   {
+    "title": "Roadmap - vibe-qc documentation",
+    "url": "https://vibe-qc.com/docs/roadmap.html",
+    "snippet": "8-system \u00d7 3-method \u00d7 2-basis sweep: 20/23 sub-\u00b5Ha parity (3 outliers convergence-protocol differences). UHF closed-shell parity gate passes (UHF M=1\u00a0...",
+    "provider": "searxng",
+    "rank": 8,
+    "score": 0.08333333333333333,
+    "source_type": null,
+    "published_at": null
+   }
+  ],
+  "live_searxng": [
+   {
+    "query": "bind pass method finding closed chartered",
+    "title": "Defining Service Dependencies Automatically (Autowiring) - Symfony",
+    "snippet": "It reads the type-hints on your constructor (or other methods) and automatically passes the correct services to each method. Symfony's autowiring is designed to\u00a0...",
+    "url": "https://symfony.com/doc/current/service_container/autowiring.html"
+   },
+   {
+    "query": "bind pass method finding closed chartered",
+    "title": "Cypher Cheat Sheet - Cypher Manual - Neo4j",
+    "snippet": "Bind a path pattern to a path variable, and return the path pattern. ... It uses a standard two-pass method, with N as the denominator, and should be\u00a0...",
+    "url": "https://neo4j.com/docs/cypher-manual/current/cheat-sheet/"
+   },
+   {
+    "query": "bind pass method finding closed chartered",
+    "title": "Transportation Services for Chartered Nonpublic and Community ...",
+    "snippet": "Request records from the school district to confirm that the district board of education adopted a resolution determining the student impractical to transport,.",
+    "url": "https://education.ohio.gov/getattachment/Topics/Finance-and-Funding/School-Transportation/School-Transportation-Finance/Payment-in-Lieu-of-Transportation/Transportation-Services-for-Chartered-Nonpublic-and-Community-School-Students-Handbook.pdf"
+   },
+   {
+    "query": "bind pass method finding closed chartered",
+    "title": "Wisconsin Open Meetings Law Compliance Guide",
+    "snippet": "Procedure for Convening in Closed Session ... governmental body pass a motion, by recorded majority vote, to convene in closed session.",
+    "url": "https://www.wisdoj.gov/Open%20Government/OML_guide.pdf"
+   },
+   {
+    "query": "bind pass method finding closed chartered",
+    "title": "Rule 23. Class Actions | Federal Rules of Civil Procedure | US Law",
+    "snippet": "... binding the class that might have been certified. Time may be needed to ... method of determining what fee is reasonable. The rule does not attempt to\u00a0...",
+    "url": "https://www.law.cornell.edu/rules/frcp/rule_23"
+   },
+   {
+    "query": "bind pass method finding closed chartered",
+    "title": "Charter Schools | Department of Education",
+    "snippet": "When authorized, the charter is the legally binding agreement ... Renewal or Closure of Charter Schools. The procedure to challenge the granting of a charter\u00a0...",
+    "url": "https://www.pa.gov/agencies/education/resources/policies-acts-and-laws/basic-education-circulars-becs/purdons-statutes/charter-schools"
+   },
+   {
+    "query": "bind pass method finding closed chartered",
+    "title": "How to bind data with Vaadin data provider",
+    "snippet": "Jul 24, 2026 ... To create a lazy binding, use an overloaded version of the setItems() method that uses a callback instead of passing data directly to the\u00a0...",
+    "url": "https://vaadin.com/docs/latest/flow/binding-data/data-provider"
+   },
+   {
+    "query": "bind pass method finding closed chartered",
+    "title": "dafi90-302.pdf - Air Force",
+    "snippet": "Mar 15, 2023 ... During evaluation of any nuclear-certified procedure, MAJCOM inspectors ... (T-2) A certified inspector must validate findings identified.",
+    "url": "https://static.e-publishing.af.mil/production/1/saf_ig/publication/dafi90-302/dafi90-302.pdf"
+   },
+   {
+    "query": "binding agentic semiotic prereg pass",
+    "title": "Preregistration and Registration as a New Method for Transparency ...",
+    "snippet": "... binding and highly visible accountability structures as well as clear ... pass or fail when the comparison is made. 338. The direction of hypothetico\u00a0...",
+    "url": "https://scholarcommons.sc.edu/cgi/viewcontent.cgi?article=8807&context=etd"
+   },
+   {
+    "query": "binding agentic semiotic prereg pass",
+    "title": "How Everyday Language Shapes the Way We Think, Feel, and Act",
+    "snippet": "Dec 20, 2024 ... ... binding\u201d message. Although these results are intriguing, processing fluency is a relatively understudied mechanism in the linguistic framing\u00a0...",
+    "url": "https://journals.sagepub.com/doi/10.1177/15291006241246966?int.sj-full-text.similar-articles.8=&"
+   },
+   {
+    "query": "binding agentic semiotic prereg pass",
+    "title": "PhilArchive: The Philosophy E-Print Archive",
+    "snippet": "Welcome to PhilArchive! PhilArchive is the largest open access e-print archive in philosophy. Formerly known as the PhilPapers Archive, it is built on and\u00a0...",
+    "url": "https://philarchive.org/"
+   },
+   {
+    "query": "binding agentic semiotic prereg pass",
+    "title": "What are the key relationships between archaeologists and their ...",
+    "snippet": "Mar 26, 2018 ... Digital Archaeologists, the 2018 Theoretical Archaeology Group Meeting has a session just for you! There is still time to submit an abstract\u00a0...",
+    "url": "https://www.facebook.com/groups/754391517955825/posts/1723963504331950/"
+   },
+   {
+    "query": "binding agentic semiotic prereg pass",
+    "title": "Entropy of Authority in Dialogue Games - Acta Acad\u00e9mica",
+    "snippet": "Oct 15, 2025 ... verifiable bound. ... Each entry must pass leakage audits and report per language calibration with temperatures learned on validation only.",
+    "url": "https://www.aacademica.org/agustin.v.startari/218.pdf"
+   },
+   {
+    "query": "binding agentic semiotic prereg pass",
+    "title": "Educational Measurement | NCME",
+    "snippet": "These findings underscore the key role that different semiotic ... Pass\u2013fail distinctions near the cutoff will have poor validity because a\u00a0...",
+    "url": "https://ncme.org/wp-content/uploads/2026/01/Educational-Measurement-Fifth-Edition.pdf"
+   },
+   {
+    "query": "binding agentic semiotic prereg pass",
+    "title": "Progressive Copyright Theory - CWSL Scholarly Commons",
+    "snippet": "See, e.g., Keith Aoki, Distributive and Syncretic Motives in Intellectual Property Law (with. Special Reference to Coercion, Agency, and Development), 40 U.C.\u00a0...",
+    "url": "https://scholarlycommons.law.cwsl.edu/cgi/viewcontent.cgi?article=1542&context=fs"
+   },
+   {
+    "query": "binding agentic semiotic prereg pass",
+    "title": "2025-2026 New Brunswick Graduate Catalog - AWS",
+    "snippet": "... pass orals (and any remediation) by June 1 in the year you plan to apply for ... binding on all persons acting on the behalf of the offering\u00a0...",
+    "url": "https://coursedog-pdfs-public-prod.s3.us-east-2.amazonaws.com/rutgers/catalog/8d29386f-2d8d-499a-aad5-6aa8a940fee7-rutgers-catalog-1775071237635.pdf"
+   },
+   {
+    "query": "response markdown fenced json strict invalid gemini flash",
+    "title": "Fail to parse JSON response from Gemini when search tool enabled",
+    "snippet": "Dec 28, 2025 ... Description Description: Using AI SDK v6, I want to use the Gemini 3 Flash model to run some web searches automatically, and then summarize\u00a0...",
+    "url": "https://github.com/vercel/ai/issues/11450"
+   },
+   {
+    "query": "response markdown fenced json strict invalid gemini flash",
+    "title": "how to deal with ```json in the output : r/LLMDevs - Reddit",
+    "snippet": "Feb 9, 2025 ... As of now I'm using gemini 2.0 flash free version. kakdi_kalota. \u2022. 2y ... ```Fenced code blocks``` like GitHub flavored markdown. 14\u00a0...",
+    "url": "https://www.reddit.com/r/LLMDevs/comments/1il8w5f/how_to_deal_with_json_in_the_output/"
+   },
+   {
+    "query": "response markdown fenced json strict invalid gemini flash",
+    "title": "Improving Structured Output Reliability in Small Language Models",
+    "snippet": "May 4, 2026 ... The answer is mathematically correct, but the markdown fence makes the response unparseable as JSON. json_valid = 0% across all 1,319 test\u00a0...",
+    "url": "https://arxiv.org/html/2605.02363v1"
+   },
+   {
+    "query": "response markdown fenced json strict invalid gemini flash",
+    "title": "Structured Output Prompting: How to Get Reliable JSON, CSV, and ...",
+    "snippet": "Apr 11, 2026 ... Gemini: JSON Response Mode. Google's Gemini API provides a ... markdown code fences let cleaned = response.trim(); // Handle. json\u00a0...",
+    "url": "https://sureprompts.com/blog/structured-output-prompting-guide"
+   },
+   {
+    "query": "response markdown fenced json strict invalid gemini flash",
+    "title": "Engineering log: fine-tuning Gemma 4 E4B with LoRA to bring ...",
+    "snippet": "Aug 29, 2026 ... Constraining part of a Gemini response to a strict JSON schema ... gemini-3.7-flash looked like the answer: best of the three tested at\u00a0...",
+    "url": "https://johnoreilly.dev/posts/formai-gemma4-lora/"
+   },
+   {
+    "query": "response markdown fenced json strict invalid gemini flash",
+    "title": "Environment Variable Configuration - Open WebUI docs",
+    "snippet": "- The output must be a single, raw JSON object, without any markdown code fences or other encapsulating text. ... Gemini 2.5 Flash Image and all newer Gemini\u00a0...",
+    "url": "https://docs.openwebui.com/reference/env-configuration/"
+   },
+   {
+    "query": "response markdown fenced json strict invalid gemini flash",
+    "title": "Gemini Toolbox for Developers: Find Past Coding Sessions",
+    "snippet": "Apr 11, 2026 ... Developers: search every past Gemini coding conversation by error message, function name, or date. Export code sessions as Markdown or JSON.",
+    "url": "https://www.ai-toolbox.co/advantages-use-cases-gemini-toolbox/gemini-toolbox-for-developers-2026"
+   },
+   {
+    "query": "response markdown fenced json strict invalid gemini flash",
+    "title": "Structured Output Backends - Cognee Documentation",
+    "snippet": "Fix. Upgrade Cognee \u2014 the fallback path now strips a code fence that wraps the entire reply before validating, and leaves backticks inside JSON values alone. No\u00a0...",
+    "url": "https://docs.cognee.ai/setup-configuration/structured-output-backends"
+   },
+   {
+    "query": "closed pass amendment prereg chartered",
+    "title": "NC General Statutes - Chapter 163",
+    "snippet": "Dec 27, 2018 ... registered before the polls are closed on the day the challenge is made. ... pass upon the validity of all applications for absentee ballots\u00a0...",
+    "url": "https://www.ncleg.gov/EnactedLegislation/Statutes/PDF/ByChapter/Chapter_163.pdf"
+   },
+   {
+    "query": "closed pass amendment prereg chartered",
+    "title": "37 CFR Part 202 -- Preregistration and Registration of Claims to ...",
+    "snippet": "(iii) A copyright registration or a renewal registration made under title 17 of the United States Code as it existed before January 1, 1978. (\u00a0...",
+    "url": "https://www.ecfr.gov/current/title-37/chapter-II/subchapter-A/part-202"
+   },
+   {
+    "query": "closed pass amendment prereg chartered",
+    "title": "State of Election Policy Legislation 2026 Mid-Year Report - Ballotpedia",
+    "snippet": "Aug 27, 2026 ... Legislators passed SB 3, a constitutional amendment that would require no-excuse absentee voting. It passed both legislative chambers this\u00a0...",
+    "url": "https://ballotpedia.org/State_of_Election_Policy_Legislation_2026_Mid-Year_Report"
+   },
+   {
+    "query": "closed pass amendment prereg chartered",
+    "title": "Managing the Crisis: The FDIC and RTC Experience, Volume 1",
+    "snippet": "the National Depositor Preference (NDP) Amendment was passed. ... Before the failing bank is closed, the FDIC must decide whether to pass all deposits or.",
+    "url": "https://www.fdic.gov/bank/historical/managing/documents/history-consolidated.pdf"
+   },
+   {
+    "query": "closed pass amendment prereg chartered",
+    "title": "Voting rights in the United States - Wikipedia",
+    "snippet": "In 1957, Congress passed the Civil Rights Act of 1957 to implement the Fifteenth Amendment. ... closed primary\" system and bar independents from voting in\u00a0...",
+    "url": "https://en.wikipedia.org/wiki/Voting_rights_in_the_United_States"
+   },
+   {
+    "query": "closed pass amendment prereg chartered",
+    "title": "Legislative Approaches to Ensuring Only Citizens Vote",
+    "snippet": "Sep 1, 2025 ... ... charter amendments to allow residents who are not U.S. citizens to ... In 2022, the Council of The District of Columbia passed the Local Resident\u00a0...",
+    "url": "https://selc.senate.ca.gov/system/files/2025-09/ncsl-legislative-approaches-to-ensuring-only-citizens-vote.pdf"
+   },
+   {
+    "query": "closed pass amendment prereg chartered",
+    "title": "Higher Education Opportunity Act - GovInfo",
+    "snippet": "Technical amendment of income-based repayment. PART H--Program Integrity Sec ... closed circuit, cable, microwave, broadband lines, fiber optics\u00a0...",
+    "url": "https://www.govinfo.gov/content/pkg/PLAW-110publ315/html/PLAW-110publ315.htm"
+   },
+   {
+    "query": "closed pass amendment prereg chartered",
+    "title": "Part - Virginia Law",
+    "snippet": "... Amendment, and the Constitution of Virginia; federal and state laws ... Nothing in this subsection shall be construed to authorize a closed meeting to discuss any\u00a0...",
+    "url": "https://law.lis.virginia.gov/vacodefull/title24.2/subtitle/part/"
+   },
+   {
+    "query": "count committed artifact contrast inconclusive panel incompleteness",
+    "title": "SWE-Proof: Can Language Models Resolve Real-World Issues with ...",
+    "snippet": "6 days ago ... Inconclusive counts as a pass. The audit never runs on a submission ... commit, together with the formal artifact in the settings that require one\u00a0...",
+    "url": "https://arxiv.org/html/2609.21190v1"
+   },
+   {
+    "query": "count committed artifact contrast inconclusive panel incompleteness",
+    "title": "DASC, a sensitive classifier for measuring discrete early stages in ...",
+    "snippet": "Accordingly, perturbation of individual EAPs often results in minor effects on biochemical measurements of CME, thus providing inconclusive/misleading\u00a0...",
+    "url": "https://pmc.ncbi.nlm.nih.gov/articles/PMC7192580/"
+   },
+   {
+    "query": "count committed artifact contrast inconclusive panel incompleteness",
+    "title": "The Curved World: Lobachevsky and the Geometry of Reality",
+    "snippet": "Jul 29, 2026 ... Nikolai Lobachevsky, rector of a provincial university on the Volga, did what none of them had done. He proposed that the alternative be granted\u00a0...",
+    "url": "https://medium.com/@krigerbruce/the-curved-world-lobachevsky-and-the-geometry-of-reality-1062eee33d1c"
+   },
+   {
+    "query": "count committed artifact contrast inconclusive panel incompleteness",
+    "title": "(PDF) Opportunities as Artifacts and Entrepreneurship as Design",
+    "snippet": "opportunities entrepreneurs identify (Schmitt, Rosing,. Zhang, & Leatherbee, 2018). In contrast, scholars operating within a design. paradigm (Gregor & Hevner,\u00a0...",
+    "url": "https://www.researchgate.net/publication/338817318_Opportunities_as_Artifacts_and_Entrepreneurship_as_Design"
+   },
+   {
+    "query": "count committed artifact contrast inconclusive panel incompleteness",
+    "title": "Mechanistic insights into SteAB regulation of cell wall hydrolase ...",
+    "snippet": "... panel E) that interact with the C ... S11), where the apparent absences may reflect assembly artifacts or incompleteness rather than true gene loss.",
+    "url": "https://journals.asm.org/doi/10.1128/mbio.03700-25"
+   },
+   {
+    "query": "count committed artifact contrast inconclusive panel incompleteness",
+    "title": "The value of micro-CT imaging in the forensic evaluation of neck ...",
+    "snippet": "Micro-computed tomography (micro-CT) is an upcoming imaging modality capable of scanning samples at microscale resolution up to 1 \u00b5m. Soft-tissue contrast can\u00a0...",
+    "url": "https://www.sciencedirect.com/science/article/pii/S0379073825001823"
+   },
+   {
+    "query": "count committed artifact contrast inconclusive panel incompleteness",
+    "title": "2025 American Thyroid Association Management Guidelines for ...",
+    "snippet": "Background:Differentiated thyroid cancer (DTC) is the most prevalent cancer of thyroid and is among the most frequently diagnosed cancers in the United\u00a0...",
+    "url": "https://journals.sagepub.com/doi/10.1177/10507256251363120?int.sj-full-text.similar-articles.7="
+   },
+   {
+    "query": "count committed artifact contrast inconclusive panel incompleteness",
+    "title": "Deconstructing cancer in 3D: models, mechanisms, and ...",
+    "snippet": "Jun 5, 2026 ... In contrast, organoids are derived directly from patient tissue and recapitulate glandular or other histopathological structures, possessing\u00a0...",
+    "url": "https://link.springer.com/article/10.1186/s12943-026-02704-8"
+   },
+   {
+    "query": "subject call",
+    "title": "Subject Call Numbers for Law Books - Legal Research Sources ...",
+    "snippet": "Call Number Browsing. The call number list is based on general Library of Congress subject classifications. These numbers are provided primarily as a browsing\u00a0...",
+    "url": "https://guides.law.byu.edu/legalresearch/callnums"
+   },
+   {
+    "query": "subject call",
+    "title": "[RSpec] Do you think having `subject` call a service directly instead ...",
+    "snippet": "Apr 28, 2023 ... This basically just replaces the subject to be an instance of the service and then the spec to explicitly run the code (notice the change from .",
+    "url": "https://www.reddit.com/r/ruby/comments/131p961/rspec_do_you_think_having_subject_call_a_service/"
+   },
+   {
+    "query": "subject call",
+    "title": "Library of Congress Call Number Classification",
+    "snippet": "Aug 21, 2026 ... Because books on the same subject are given similar call numbers, this system allows for a high level of consistency between libraries. Thus\u00a0...",
+    "url": "https://researchguides.library.tufts.edu/callnumbers"
+   },
+   {
+    "query": "subject call",
+    "title": "Theatre Research Resources: Call Numbers and Subject Headings",
+    "snippet": "Call Numbers and Subject Headings \u00b7 PA3050-4505 - Greek Literature. PA4413-4434-Sophocles \u00b7 PN1530 - The Monologue \u00b7 PN1551 - The Dialogue \u00b7 PN1600-1989 - Drama\u00a0...",
+    "url": "https://guides.zsr.wfu.edu/c.php?g=34411&p=219112"
+   },
+   {
+    "query": "subject call",
+    "title": "Library of Congress Classification Outline - Library of Congress",
+    "snippet": "Contact \u00b7 FAQs \u00b7 News \u00b7 Acquisitions \u00b7 Resources for Cataloging \u00b7 Catalogs, Authority ... Subject Headings & Genre/Form Terms. Library of Congress Classification\u00a0...",
+    "url": "https://www.loc.gov/catdir/cpso/lcco/"
+   },
+   {
+    "query": "subject call",
+    "title": "Engineering Call Number & Subject Guide",
+    "snippet": "Engineering Call Number & Subject Guide. Bound journal volumes are accessible by document delivery: https://www.library.cornell.edu/services/request/scan-it.",
+    "url": "https://engineering.library.cornell.edu/engineering-call-number-subject-guide/"
+   },
+   {
+    "query": "subject call",
+    "title": "Subject to Call Definition | Law Insider",
+    "snippet": "Define Subject to Call. means employees who are assigned to positions which may require irregular or occasional work. (For example, Police Special\u00a0...",
+    "url": "https://www.lawinsider.com/dictionary/subject-to-call"
+   },
+   {
+    "query": "subject call",
+    "title": "Subject and Call Number Searching - YouTube",
+    "snippet": "Feb 11, 2019 ... Go to channel CH 02: CEC: SANVAHAK: Education. Mapping of Knowledge in classification schemes and call number. CH 02: CEC: SANVAHAK: Education.",
+    "url": "https://www.youtube.com/watch?v=guhg8WohGmc"
+   }
+  ]
+ }
+}
