@@ -664,8 +664,9 @@ def drive_run_endpoint(
     return stamp(state.to_dict())
 
 
-# RBAC-005 / RBAC-901 audit: runs.py has one mutation route as of the
-# http-run-launch-endpoint contract — POST /runs (gated by
+# RBAC-005 / RBAC-901 audit: runs.py has two mutation routes — POST /runs
+# (http-run-launch-endpoint contract) and POST /runs/{run_id}/drive (Option A
+# phase 1), both gated by
 # Depends(require_role("owner", "admin")) via _RBAC_RUN_LAUNCH, mirroring
 # agent_jobs.py's mutation-route pattern exactly). The six GET routes below
 # remain read-only:
