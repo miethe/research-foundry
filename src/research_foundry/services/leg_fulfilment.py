@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Any
 
 from ..frontmatter import load_md
-from ..paths import FoundryPaths
+from ..paths import FoundryPaths, distribution_root
 from ..yamlio import dump_yaml, load_yaml
 
 # Matches swarm_drive._LEG_RECEIPTS_SCHEMA -- the schema _ica_turns reads.
@@ -277,9 +277,36 @@ def _journaled_call(
     return result
 
 
+_SOURCE_TYPE_FALLBACK = (
+    "official_doc", "paper", "standard", "repo", "news", "blog", "book",
+    "personal_note", "internal_doc", "other",
+)
+
+
+def _load_source_types() -> tuple[str, ...]:
+    """``source.source_type`` enum from ``schemas/source_card.schema.yaml`` (fallback: a copy)."""
+
+    try:
+        raw = load_yaml(distribution_root() / "schemas" / "source_card.schema.yaml")
+        return tuple(raw["properties"]["source"]["properties"]["source_type"]["enum"])
+    except Exception:  # noqa: BLE001 -- any read/parse failure -> fallback
+        return _SOURCE_TYPE_FALLBACK
+
+
+_SOURCE_TYPES = _load_source_types()
+
+
+def _coerce_source_type(value: Any) -> str:
+    """A model-suggested source_type is advisory: anything off the schema enum -> ``other``."""
+
+    text = str(value or "").strip().lower()
+    return text if text in _SOURCE_TYPES else "other"
+
+
 _CARD_JSON_INSTRUCTION = (
     "Do not use any tools. Respond with ONLY one JSON object: "
-    '{"title": str, "source_type": str, "points": [{"quote": str (verbatim from the fenced body)}]}.'
+    '{"title": str, "source_type": one of ' + "|".join(_SOURCE_TYPES) + ', '
+    '"points": [{"quote": str (verbatim from the fenced body)}]}.'
 )
 _CLAIM_JSON_INSTRUCTION = (
     "Do not use any tools. Only emit a claim that the cited source's fenced text itself states; "
@@ -413,19 +440,24 @@ def fulfil_run(
         tool_input["extra_limitations"] = limitations
         if parsed.get("title") and not tool_input.get("title"):
             tool_input["title"] = parsed.get("title")
-        if parsed.get("source_type"):
-            tool_input["source_type"] = parsed.get("source_type")
+        tool_input["source_type"] = _coerce_source_type(
+            parsed.get("source_type") or tool_input.get("source_type")
+        )
 
         outcome = service.run_job_tool("source_card", tool_input, job, paths=paths)
         source_card_id = None
         if isinstance(outcome, Mapping) and outcome.get("status") == "ok":
             source_card_id = (outcome.get("output") or {}).get("source_card_id")
+        if not source_card_id:
+            # The card was not written (or failed validation): never report it as carded.
+            failed.append(leg_id)
+            continue
         carded.append(
             {
                 "leg_id": leg_id,
                 "source_card_id": source_card_id,
                 "title": parsed.get("title"),
-                "source_type": parsed.get("source_type"),
+                "source_type": tool_input["source_type"],
                 "points": points,
                 "source_text": str(leg.get("body") or ""),
             }

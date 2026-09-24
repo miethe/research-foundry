@@ -326,3 +326,57 @@ def test_a_call_killed_mid_flight_is_counted_from_its_write_ahead_line(tmp_path)
     by_id = {leg["id"]: leg for leg in receipts["legs"]}
     assert by_id["carding-1"]["turns_used"] == 7 and by_id["carding-1"]["upper_bound"] is False
     assert by_id["carding-2"]["turns_used"] == 20 and by_id["carding-2"]["upper_bound"] is True
+
+
+def test_off_schema_source_type_is_coerced_and_the_card_validates(tmp_foundry: FoundryPaths) -> None:
+    """Re-drive finding: ICA answered source_type 'documentation'/'forum'/'article',
+    the source_card schema rejected them, and the leg was still reported carded."""
+    from research_foundry.frontmatter import load_md
+
+    run_id = _planned_run(tmp_foundry)
+    rp = tmp_foundry.run_paths(run_id)
+    _write_bundle(rp, run_id, [_carding_leg("leg-1", "https://example.com/doc")])
+
+    def call_leg(prompt: str, model: str | None, max_turns: int | None) -> dict[str, Any]:
+        assert "official_doc|" in prompt  # the schema enum is advertised to the model
+        return {
+            "result": json.dumps(
+                {"title": "Doc", "source_type": "documentation", "points": [{"quote": "a point"}]}
+            ),
+            "num_turns": 1,
+            "is_error": False,
+        }
+
+    summary = fulfil_run(run_id, call_leg=call_leg, paths=tmp_foundry, max_attempts=1)
+    assert summary["carded"] == ["leg-1"] and summary["failed"] == []
+    cards = sorted(rp.sources.glob("*.md"))
+    assert len(cards) == 1
+    meta, _ = load_md(cards[0])
+    assert meta["source"]["source_type"] == "other"
+
+
+def test_a_card_the_job_service_refuses_is_failed_not_carded(tmp_foundry: FoundryPaths) -> None:
+    from research_foundry.services import agent_job_service
+
+    run_id = _planned_run(tmp_foundry)
+    rp = tmp_foundry.run_paths(run_id)
+    _write_bundle(rp, run_id, [_carding_leg("leg-1", "https://example.com/x")])
+
+    class _Refusing(agent_job_service.AgentJobService):
+        def run_job_tool(self, *a: Any, **k: Any) -> dict[str, Any]:
+            return {"status": "error", "error": "schema"}
+
+    def call_leg(prompt: str, model: str | None, max_turns: int | None) -> dict[str, Any]:
+        out = _valid_result()
+        out["num_turns"] = 1
+        return out
+
+    import research_foundry.services.leg_fulfilment as lf
+
+    orig = agent_job_service.AgentJobService
+    agent_job_service.AgentJobService = _Refusing  # type: ignore[misc]
+    try:
+        summary = lf.fulfil_run(run_id, call_leg=call_leg, paths=tmp_foundry, max_attempts=1)
+    finally:
+        agent_job_service.AgentJobService = orig  # type: ignore[misc]
+    assert summary["carded"] == [] and summary["failed"] == ["leg-1"]

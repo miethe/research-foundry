@@ -77,7 +77,7 @@ def main() -> int:
 
     call_leg = build_call_leg(args.ica_bin)
     summary = fulfil_run(args.run_id, call_leg=call_leg, paths=FoundryPaths.discover())
-    print(json.dumps(summary, indent=2, sort_keys=True))
+    print(json.dumps(summary, indent=2, sort_keys=True, default=str))
     return 0
 
 
