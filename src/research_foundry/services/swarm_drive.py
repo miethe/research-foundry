@@ -1435,7 +1435,7 @@ def _build_job(ctx: DriveContext) -> Any:
     )
 
 
-def _digest_artifact(artifact: Path) -> str | None:
+def _digest_artifact(artifact: Path | None) -> str | None:
     """Content-address a stage's producer output (Option A phase 2).
 
     A file digests its raw bytes as ``"sha256:" + hexdigest``. A directory
@@ -1445,6 +1445,8 @@ def _digest_artifact(artifact: Path) -> str | None:
     absent or unreadable — never raises.
     """
 
+    if artifact is None:
+        return None
     try:
         if artifact.is_file():
             return "sha256:" + hashlib.sha256(artifact.read_bytes()).hexdigest()
@@ -1464,7 +1466,7 @@ def _digest_artifact(artifact: Path) -> str | None:
     return None
 
 
-def _stage_receipt(stage: str, started_at: str, artifact: Path) -> dict[str, Any]:
+def _stage_receipt(stage: str, started_at: str, artifact: Path | None) -> dict[str, Any]:
     """Build one per-stage receipt (Option A phase 2, appended at each
     ``steps_run.append(...)`` site — never for a resume-skipped stage).
 
@@ -1538,6 +1540,19 @@ def _ica_turns(rp: RunPaths, llm_legs: str) -> dict[str, Any]:
         by_leg_type[leg_type] = by_leg_type.get(leg_type, 0) + turns
         total += turns
 
+    # A partial receipt file (some emitted legs unreported) is not a measurement
+    # of the run's ICA turns: report it unmeasured rather than under-count.
+    requested_ids = _requested_leg_ids(legs_path)
+    reported_ids = {str(leg.get("id")) for leg in legs}
+    if requested_ids and not requested_ids <= reported_ids:
+        return {
+            "measured": False,
+            "total": None,
+            "partial_total": total,
+            "missing_legs": sorted(requested_ids - reported_ids),
+            "source": "leg_receipts.yaml partial",
+        }
+
     return {
         "measured": True,
         "total": total,
@@ -1545,6 +1560,21 @@ def _ica_turns(rp: RunPaths, llm_legs: str) -> dict[str, Any]:
         "legs": len(legs),
         "source": "leg_receipts.yaml",
     }
+
+
+def _requested_leg_ids(legs_path: Path) -> set[str]:
+    """Leg ids from an emitted ``leg_requests.yaml`` (empty when absent/unreadable)."""
+
+    if not legs_path.exists():
+        return set()
+    try:
+        data = load_yaml(legs_path)
+    except Exception:  # noqa: BLE001 — never raise out of turn accounting
+        return set()
+    legs = data.get("legs") if isinstance(data, Mapping) else None
+    if not isinstance(legs, list):
+        return set()
+    return {str(leg.get("id")) for leg in legs if isinstance(leg, Mapping) and leg.get("id")}
 
 
 def _redacted_dump(obj: Any, path: Path, *, config: FoundryConfig) -> Path:

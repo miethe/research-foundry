@@ -870,3 +870,25 @@ def test_drivestate_to_dict_is_json_serializable(tmp_foundry, tmp_path):
 
     state = drive_run(run_id, llm_legs="none", paths=tmp_foundry, providers={})
     json.dumps(state.to_dict())  # must not raise
+
+
+def test_ica_turns_partial_leg_receipts_is_unmeasured(tmp_path):
+    """Lead review: a receipt file missing an emitted leg must not read as measured."""
+    from research_foundry.services.swarm_drive import _ica_turns
+    from research_foundry.yamlio import dump_yaml
+
+    run_dir = tmp_path / "runs" / "rf_run_partial"
+    run_dir.mkdir(parents=True)
+    dump_yaml({"legs": [{"id": "carding-1"}, {"id": "claim-map"}]}, run_dir / "leg_requests.yaml")
+    dump_yaml(
+        {"schema_version": "rf.swarm.leg_receipts/1.0", "legs": [{"id": "carding-1", "leg_type": "carding", "turns_used": 3}]},
+        run_dir / "leg_receipts.yaml",
+    )
+
+    class _RP:
+        run = run_dir
+
+    out = _ica_turns(_RP(), "none")
+    assert out["measured"] is False
+    assert out["missing_legs"] == ["claim-map"]
+    assert out["partial_total"] == 3
