@@ -12,9 +12,8 @@ from pathlib import Path
 
 from research_foundry.frontmatter import dump_md
 from research_foundry.paths import FoundryPaths
-from research_foundry.yamlio import dump_yaml, load_yaml
-
 from research_foundry.services.claim_support import apply_claim_map, support_verdict
+from research_foundry.yamlio import dump_yaml, load_yaml
 
 _QUESTION = "M3b L2: bind pass-1 results and methods finding (v1 closed, v2 chartered)"
 _VIBE_QC_TITLE = "Roadmap - vibe-qc documentation"
@@ -127,3 +126,12 @@ def test_apply_claim_map_accepts_and_rejects(tmp_foundry: FoundryPaths) -> None:
     rejections = load_yaml(result["rejections"])
     assert len(rejections["rejections"]) == 1
     assert rejections["rejections"][0]["verdict"]["supported"] is False
+
+
+def test_number_check_is_token_level_not_substring():
+    """Lead review: a claim's "1" is not supported by a source's "10"."""
+    from research_foundry.services.claim_support import support_verdict
+
+    v = support_verdict("Recovery succeeded in 1 run", ["Recovery succeeded in 10 runs"], "unrelated")
+    assert v["supported"] is False
+    assert "claim cites numbers absent from its sources" in v["reasons"]

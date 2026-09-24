@@ -424,7 +424,7 @@ def test_fenced_body_does_not_flip_tool_selection_or_sensitivity_in_emit(tmp_fou
 
     hits = [
         SearchHit(
-            title=f"Doc A {_ADVERSARIAL}",
+            title=f"Swarm governance demo topic doc A {_ADVERSARIAL}",
             url="https://example.org/a",
             snippet=_ADVERSARIAL,
             source_type="reputable_news",

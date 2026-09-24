@@ -1472,7 +1472,16 @@ def _discover(
                 else:
                     rejected.append(hit_d)
 
-    kept = kept[:max_results]
+    # Round-robin across queries so one sub-topic cannot crowd out the rest.
+    by_query: dict[str, list[dict[str, Any]]] = {}
+    for hit_d in kept:
+        by_query.setdefault(str(hit_d.get("query")), []).append(hit_d)
+    interleaved: list[dict[str, Any]] = []
+    while any(by_query.values()) and len(interleaved) < max_results:
+        for q in queries:
+            if by_query.get(q) and len(interleaved) < max_results:
+                interleaved.append(by_query[q].pop(0))
+    kept = interleaved
     rule = relevance({}, terms, queries[0] if queries else "", phrases)["rule"]
     doc = {
         "source_candidates": kept,

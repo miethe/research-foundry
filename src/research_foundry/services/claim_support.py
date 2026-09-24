@@ -23,8 +23,9 @@ A claim is REJECTED when any of the following hold:
      the source text it actually cites.
   3. support_ratio = |C & S| / |C| < SUPPORT_RATIO_THRESHOLD -> "claim terms
      not found in cited sources".
-  4. any digit-bearing token in the claim (via a plain numeric regex over the
-     raw claim text) is absent from the raw source text -> "claim cites
+  4. any number in the claim (plain numeric regex over the raw claim text)
+     is not also a number token of the raw source text (token match, so "1"
+     is not supported by "10") -> "claim cites
      numbers absent from its sources". Numbers are checked against the RAW
      text, never the normalized term sets, because normalize() drops any
      token containing a digit.
@@ -72,9 +73,10 @@ def support_verdict(
         if support_ratio < SUPPORT_RATIO_THRESHOLD:
             reasons.append("claim terms not found in cited sources")
 
-    source_text_joined = " ".join(source_texts or [])
+    # Token-level, not substring: "1" must not be "supported" by a "10".
+    source_numbers = set(_NUMBER_RE.findall(" ".join(source_texts or [])))
     unsupported_numbers = [
-        n for n in _NUMBER_RE.findall(claim_text or "") if n not in source_text_joined
+        n for n in _NUMBER_RE.findall(claim_text or "") if n not in source_numbers
     ]
     if unsupported_numbers:
         reasons.append("claim cites numbers absent from its sources")
