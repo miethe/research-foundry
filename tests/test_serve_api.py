@@ -909,3 +909,169 @@ def test_existing_get_routes_unaffected_by_new_mutation_route(tmp_path):
         == 200
     )
     assert client.get("/api/reports/rf_run_regression_check/anchors").status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# POST /api/runs/{run_id}/drive (Option A phase 1 run-drive endpoint)
+# ---------------------------------------------------------------------------
+
+
+def test_drive_run_rbac_forbidden_without_role(tmp_path, monkeypatch):
+    from research_foundry.services import swarm_drive
+
+    calls: list[str] = []
+
+    def _fake_drive_run(run_id, **kwargs):
+        calls.append(run_id)
+        raise AssertionError("drive_run must not be called when RBAC denies")
+
+    monkeypatch.setattr(swarm_drive, "drive_run", _fake_drive_run)
+    client, _cfg, token = _make_rbac_client(tmp_path, monkeypatch, roles=["viewer"])
+    resp = client.post(
+        "/api/runs/rf_run_missing/drive",
+        json={"llm_legs": "none"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 403
+    assert calls == []
+
+
+def test_drive_run_rbac_allowed_with_owner_role(tmp_path, monkeypatch):
+    from research_foundry.services import swarm_drive
+    from research_foundry.services.swarm_drive import DriveState
+
+    seen: dict[str, Any] = {}
+
+    def _fake_drive_run(run_id, *, llm_legs, paths, writeback_wait):
+        seen["run_id"] = run_id
+        seen["llm_legs"] = llm_legs
+        seen["writeback_wait"] = writeback_wait
+        return DriveState(run_id=run_id, llm_legs=llm_legs, status_derived="bundle_written")
+
+    monkeypatch.setattr(swarm_drive, "drive_run", _fake_drive_run)
+    client, _cfg, token = _make_rbac_client(tmp_path, monkeypatch, roles=["owner"])
+    resp = client.post(
+        "/api/runs/rf_run_x/drive",
+        json={"llm_legs": "none"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status_derived"] == "bundle_written"
+    assert seen["writeback_wait"] is False
+    assert seen["llm_legs"] == "none"
+
+
+def test_drive_run_sensitivity_blocked_maps_403(tmp_path, monkeypatch):
+    from research_foundry.services import swarm_drive
+
+    def _fake_drive_run(run_id, **kwargs):
+        raise swarm_drive.SensitivityBlocked("x")
+
+    monkeypatch.setattr(swarm_drive, "drive_run", _fake_drive_run)
+    client, _cfg = _make_client(tmp_path)
+    resp = client.post("/api/runs/rf_run_x/drive", json={"llm_legs": "none"})
+    assert resp.status_code == 403
+    assert resp.json()["detail"]["error"] == "sensitivity_blocked"
+
+
+def test_drive_run_budget_exceeded_is_200_terminal(tmp_path, monkeypatch):
+    from research_foundry.services import swarm_drive
+    from research_foundry.services.swarm_drive import DriveState
+
+    def _fake_drive_run(run_id, **kwargs):
+        return DriveState(
+            run_id=run_id,
+            llm_legs="none",
+            status_derived="budget_exceeded",
+            aborted=True,
+            abort_reason="cost",
+        )
+
+    monkeypatch.setattr(swarm_drive, "drive_run", _fake_drive_run)
+    client, _cfg = _make_client(tmp_path)
+    resp = client.post("/api/runs/rf_run_x/drive", json={"llm_legs": "none"})
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["status_derived"] == "budget_exceeded"
+    assert body["aborted"] is True
+
+
+def test_drive_run_drive_error_maps_400(tmp_path, monkeypatch):
+    from research_foundry.services import swarm_drive
+
+    def _fake_drive_run(run_id, **kwargs):
+        raise swarm_drive.DriveError("bad state")
+
+    monkeypatch.setattr(swarm_drive, "drive_run", _fake_drive_run)
+    client, _cfg = _make_client(tmp_path)
+    resp = client.post("/api/runs/rf_run_x/drive", json={"llm_legs": "none"})
+    assert resp.status_code == 400
+
+
+def test_drive_run_rejects_unknown_llm_legs(tmp_path):
+    client, _cfg = _make_client(tmp_path)
+    resp = client.post("/api/runs/rf_run_x/drive", json={"llm_legs": "gpt"})
+    assert resp.status_code == 422
+
+
+def test_drive_run_http_matches_cli_state(tmp_path):
+    """TEST-011k: the HTTP drive route reaches the same ``status_derived`` as
+    calling ``swarm_drive.drive_run`` directly, on two identically-planted
+    fixture runs (no provider dispatched — llm_legs="none", providers={}).
+
+    Mirrors ``tests/test_swarm_drive.py::test_fixture_run_reaches_bundle_written``'s
+    planting (intent + plan_run + source ingest + extraction + claim ledger).
+    """
+    import uuid
+
+    from research_foundry.services import extraction, planning, source_cards
+    from research_foundry.services.claim_mapping import build_claim_ledger
+    from research_foundry.services.swarm_drive import drive_run as _drive_run_direct
+
+    client, cfg = _make_client(tmp_path)
+
+    def _plant() -> str:
+        intent_id = f"intent_research_test_drive_{uuid.uuid4().hex[:8]}"
+        intent = {
+            "id": intent_id,
+            "title": "Swarm drive http parity",
+            "owner": "Tester",
+            "status": "active",
+            "type": "research",
+            "objective": "Investigate drive parity deterministically.",
+            "governance": {
+                "sensitivity": "personal",
+                "key_profile_allowed": "personal",
+                "requires_human_review": False,
+                "allowed_writebacks": ["meatywiki_personal"],
+            },
+        }
+        dump_yaml(intent, cfg.paths.intents_active / f"{intent_id}.yaml")
+        result = planning.plan_run(intent_id, profile="personal", paths=cfg.paths)
+        run_id = result.run_id
+        rp = cfg.paths.run_paths(run_id)
+        doc = tmp_path / f"evidence_{run_id}.txt"
+        doc.write_text(
+            "Latency dropped 30% with the new router.\n\n"
+            "Teams report fewer escalations than before, according to the survey.\n\n"
+            "Evidence bundles make claim traceability auditable end to end.\n",
+            encoding="utf-8",
+        )
+        source_cards.ingest_source(
+            str(doc), run_id=run_id, title="Evidence Source", paths=cfg.paths
+        )
+        extraction.extract_run(run_id, paths=cfg.paths)
+        build_claim_ledger(run_id, intent_id=intent_id, paths=cfg.paths)
+        dump_yaml({"source_candidates": []}, rp.source_candidates)
+        return run_id
+
+    run_id_direct = _plant()
+    run_id_http = _plant()
+
+    direct_state = _drive_run_direct(
+        run_id_direct, llm_legs="none", paths=cfg.paths, providers={}
+    )
+
+    resp = client.post(f"/api/runs/{run_id_http}/drive", json={"llm_legs": "none"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status_derived"] == direct_state.status_derived
