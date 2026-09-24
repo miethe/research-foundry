@@ -14,6 +14,17 @@ deterministic, and diff-friendly.
 
 ---
 
+## Requirements
+
+- Python `>=3.11`
+- The [uv](https://docs.astral.sh/uv/) package manager
+- Optional-dependency groups such as `research`, `llm`, `search`, and `mcp` are lazy-imported
+  extras. With none installed, the core CLI (capture, triage, plan, ingest, extract, claim-map,
+  synthesize, verify, bundle, and writeback) remains fully offline and deterministic.
+- Node.js + pnpm only when building or running the `frontend/runs-viewer/` SPA.
+
+---
+
 ## Why it's different
 
 - **The claim ledger is the authority, not the model.** The synthesis step can only cite claim IDs
@@ -77,6 +88,7 @@ Install with [uv](https://docs.astral.sh/uv/):
 ```bash
 uv venv
 uv pip install -e ".[dev]"
+source .venv/bin/activate
 ```
 
 Initialize a foundry (folder structure, schemas, templates, governance policy, default model
@@ -84,6 +96,7 @@ profiles, `.env.example`, `.gitignore`):
 
 ```bash
 rf init ./research-foundry --profile personal
+cd ./research-foundry
 rf doctor
 ```
 
@@ -92,6 +105,7 @@ rf doctor
 A self-referential, bounded, work-data-free demo:
 *"What is the minimum viable architecture for an evidence-backed research swarm inside Agentic OS?"*
 This loop is deterministic and offline by default.
+Replace the illustrative intent and run IDs below with the IDs printed by the preceding commands.
 
 ```bash
 # 1. Capture a raw idea -> inbox/raw_ideas/raw_*.md
@@ -105,10 +119,10 @@ rf triage inbox/raw_ideas/raw_*.md --create-intent --create-ibom --create-tree-n
 rf plan intent_research_20260612_agentic_research_workflows \
   --depth deep --audience technical --max-cost 5 --freshness 180d
 
-# 4. Ingest sources (mixed types) -> source cards in the run's sources/
-rf ingest ./examples/source.pdf --source-type paper --sensitivity personal \
+# 4. Ingest included local sources -> source cards in the run's sources/
+rf ingest ../examples/sources/gpt_researcher.md --source-type official_doc --sensitivity personal \
   --run rf_run_20260612_agentic_research_workflows
-rf ingest "https://example.com/source" --source-type official_doc --sensitivity public \
+rf ingest ../examples/sources/ccdash.md --source-type official_doc --sensitivity public \
   --run rf_run_20260612_agentic_research_workflows
 
 # 5. Extract evidence -> extraction cards (cheap model profile)
@@ -141,6 +155,9 @@ rf writeback rf_run_20260612_agentic_research_workflows \
 rf ccdash summarize --period daily
 ```
 
+Step 10 creates local, review-gated writeback candidates; sending them requires configured and
+reachable targets.
+
 Optional review and promotion steps:
 
 ```bash
@@ -165,8 +182,8 @@ rf run export --json --all
 rf run export --json --run-id rf_run_20260612_agentic_research_workflows \
   --sensitivity-threshold personal
 
-# Print JSON to stdout for piping
-rf run export --json --run-id rf_run_20260612_agentic_research_workflows --stdout | jq '.claims | length'
+# Print JSON to stdout
+rf run export --json --run-id rf_run_20260612_agentic_research_workflows --stdout
 
 # List all runs as JSON with derived status (never stale run.yaml.status)
 rf run list --json
@@ -210,6 +227,8 @@ are **deferred**; owner qualification is `not_executed_owner_data_absent`. See t
 ### Serving Runs Live (Loopback API)
 
 Alternatively, run a local HTTP server to serve live run data without pre-exporting:
+Run `rf serve` from the initialized foundry directory. In another terminal, install the SPA's
+dependencies before building it: `cd ../frontend/runs-viewer && pnpm install`.
 
 ```bash
 # Start the server on loopback (127.0.0.1:7432, no auth required)
@@ -223,8 +242,9 @@ rf serve --bind-host 0.0.0.0 --auth-mode token
 export VITE_RUNS_FRONTEND_LOOPBACK_API=true
 export VITE_RUNS_LOOPBACK_API_BASE=http://127.0.0.1:7432/api
 export VITE_RUNS_LOOPBACK_API_TOKEN="your-secret-token-here"  # if LAN mode
-pnpm --filter runs-viewer build
-pnpm --filter runs-viewer preview  # or serve with your static host
+cd ../frontend/runs-viewer
+pnpm build
+pnpm preview  # or serve with your static host
 ```
 
 **`rf serve` environment variables and defaults:**
@@ -240,7 +260,8 @@ pnpm --filter runs-viewer preview  # or serve with your static host
 
 - Default port: `7432` (loopback and LAN modes)
 - Configurable: `rf serve --port 9000` (or set `foundry.yaml → viewer.serve_port`)
-- **Note**: Port `8765` is reserved for MeatyWiki on agentic-nuc; `7432` avoids this conflict.
+- **Note**: MeatyWiki commonly runs on port `8765` in shared or co-located deployments; `7432`
+  avoids this conflict.
 
 **Static export vs. loopback API:**
 
