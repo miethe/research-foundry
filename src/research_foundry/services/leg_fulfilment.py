@@ -12,8 +12,10 @@ calls it successfully returned from -- a crash mid-run (or a retried,
 initially-erroring call) silently dropped those turns from
 ``leg_receipts.yaml``, and ``swarm_drive._ica_turns`` under-counted the run's
 real ICA spend. Here every call -- success, error, or an unreported crash --
-is journaled to an append-only, fsync'd ``leg_calls.jsonl`` the instant it
-returns, and ``leg_receipts.yaml`` is always REBUILT from the whole journal,
+is journaled to an append-only, fsync'd ``leg_calls.jsonl`` -- a write-ahead
+``started`` line before the call and a ``call`` line the instant it returns
+(a process killed mid-call leaves an orphaned ``started`` line, counted at
+``max_turns``) -- and ``leg_receipts.yaml`` is always REBUILT from the whole journal,
 so a crash-and-resume can never drop an earlier call's turns.
 """
 
@@ -21,6 +23,7 @@ from __future__ import annotations
 
 import json
 import os
+import uuid
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any
@@ -56,6 +59,7 @@ class CallJournal:
         num_turns: int | None,
         is_error: bool,
         max_turns: int | None,
+        call_id: str | None = None,
     ) -> dict[str, Any]:
         """Append one call record; fsync before returning.
 
@@ -68,6 +72,8 @@ class CallJournal:
         basis = "reported" if num_turns is not None else "upper_bound_unreported"
         effective_turns = num_turns if num_turns is not None else (max_turns or 0)
         entry = {
+            "event": "call",
+            "call_id": call_id,
             "leg_id": str(leg_id),
             "leg_type": str(leg_type),
             "attempt": int(attempt),
@@ -78,13 +84,47 @@ class CallJournal:
             "max_turns": max_turns,
             "turns_basis": basis,
         }
+        self._append(entry)
+        return entry
+
+    def begin(
+        self,
+        leg_id: str,
+        leg_type: str,
+        attempt: int,
+        model: str | None,
+        max_turns: int | None,
+    ) -> str:
+        """Write-ahead: journal that a call is ABOUT to be made; fsync; return its id.
+
+        A process killed mid-call (SIGKILL, an outer timeout's SIGTERM, a power
+        loss) never reaches :meth:`record`, so without this line the in-flight
+        call would vanish from the receipts. :func:`write_leg_receipts` counts a
+        ``started`` line with no matching ``call`` line at ``max_turns``
+        (``turns_basis: "upper_bound_orphaned"``).
+        """
+
+        call_id = uuid.uuid4().hex
+        self._append(
+            {
+                "event": "started",
+                "call_id": call_id,
+                "leg_id": str(leg_id),
+                "leg_type": str(leg_type),
+                "attempt": int(attempt),
+                "model": model,
+                "max_turns": max_turns,
+            }
+        )
+        return call_id
+
+    def _append(self, entry: Mapping[str, Any]) -> None:
         self.run_dir.mkdir(parents=True, exist_ok=True)
-        line = json.dumps(entry, sort_keys=True)
+        line = json.dumps(dict(entry), sort_keys=True)
         with open(self.path, "a", encoding="utf-8") as fh:
             fh.write(line + "\n")
             fh.flush()
             os.fsync(fh.fileno())
-        return entry
 
     def read_all(self) -> list[dict[str, Any]]:
         """Every journaled call, in append order (``[]`` if never written)."""
@@ -112,7 +152,23 @@ def write_leg_receipts(run_dir: Path) -> Path:
     """
 
     run_dir = Path(run_dir)
-    calls = CallJournal(run_dir).read_all()
+    entries = CallJournal(run_dir).read_all()
+    calls = [e for e in entries if e.get("event", "call") == "call"]
+    finished = {c.get("call_id") for c in calls if c.get("call_id")}
+    for start in entries:
+        if start.get("event") != "started" or start.get("call_id") in finished:
+            continue
+        # A call that began and never completed: the process died mid-call.
+        calls.append(
+            {
+                **start,
+                "event": "call",
+                "num_turns": None,
+                "effective_turns": int(start.get("max_turns") or 0),
+                "is_error": True,
+                "turns_basis": "upper_bound_orphaned",
+            }
+        )
 
     by_leg: dict[str, dict[str, Any]] = {}
     for call in calls:
@@ -129,7 +185,7 @@ def write_leg_receipts(run_dir: Path) -> Path:
         )
         entry["turns_used"] += int(call.get("effective_turns") or 0)
         entry["attempts"] += 1
-        if call.get("turns_basis") == "upper_bound_unreported":
+        if str(call.get("turns_basis", "")).startswith("upper_bound"):
             entry["upper_bound"] = True
         if call.get("leg_type"):
             entry["leg_type"] = call.get("leg_type")
@@ -201,18 +257,22 @@ def _journaled_call(
     """
 
     leg_id = str(leg.get("id"))
+    call_id = journal.begin(
+        leg_id=leg_id, leg_type=leg_type, attempt=attempt, model=leg.get("model"),
+        max_turns=leg.get("max_turns"),
+    )
     try:
         result = dict(call_leg(prompt, leg.get("model"), leg.get("max_turns")))
     except BaseException:
         journal.record(
             leg_id=leg_id, leg_type=leg_type, attempt=attempt, model=leg.get("model"),
-            num_turns=None, is_error=True, max_turns=leg.get("max_turns"),
+            num_turns=None, is_error=True, max_turns=leg.get("max_turns"), call_id=call_id,
         )
         raise
     journal.record(
         leg_id=leg_id, leg_type=leg_type, attempt=attempt, model=leg.get("model"),
         num_turns=result.get("num_turns"), is_error=bool(result.get("is_error")),
-        max_turns=leg.get("max_turns"),
+        max_turns=leg.get("max_turns"), call_id=call_id,
     )
     return result
 

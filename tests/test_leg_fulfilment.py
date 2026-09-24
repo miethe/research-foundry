@@ -117,7 +117,7 @@ def test_retry_after_error_counts_both_attempts_turns(tmp_foundry: FoundryPaths)
     summary = fulfil_run(run_id, call_leg=call_leg, paths=tmp_foundry, max_attempts=2)
     assert summary["carded"] == ["leg-1"]
 
-    journal_entries = CallJournal(rp.run).read_all()
+    journal_entries = [e for e in CallJournal(rp.run).read_all() if e["event"] == "call"]
     assert len(journal_entries) == 2
     assert [e["attempt"] for e in journal_entries] == [1, 2]
 
@@ -185,7 +185,7 @@ def test_resume_after_crash_keeps_earlier_calls(tmp_foundry: FoundryPaths) -> No
 
     # The crash happened attempting leg-3; leg-1/leg-2 already journaled+carded,
     # and the crashed call itself is journaled as an unreported upper bound.
-    journal_after_crash = CallJournal(rp.run).read_all()
+    journal_after_crash = [e for e in CallJournal(rp.run).read_all() if e["event"] == "call"]
     assert len(journal_after_crash) == 3
     assert journal_after_crash[-1]["turns_basis"] == "upper_bound_unreported"
 
@@ -300,7 +300,7 @@ def test_a_call_that_raises_is_still_journaled_and_counted(tmp_path):
         pass
     else:  # pragma: no cover
         raise AssertionError("expected the call's exception to propagate")
-    calls = journal.read_all()
+    calls = [e for e in journal.read_all() if e["event"] == "call"]
     assert len(calls) == 1 and calls[0]["turns_basis"] == "upper_bound_unreported"
     write_leg_receipts(tmp_path)
     from research_foundry.yamlio import load_yaml
@@ -308,3 +308,21 @@ def test_a_call_that_raises_is_still_journaled_and_counted(tmp_path):
     receipts = load_yaml(tmp_path / "leg_receipts.yaml")
     assert receipts["calls_total"] == 1
     assert receipts["legs"][0]["turns_used"] == 20 and receipts["legs"][0]["upper_bound"] is True
+
+
+def test_a_call_killed_mid_flight_is_counted_from_its_write_ahead_line(tmp_path):
+    """A SIGKILL/outer-timeout never reaches record(): the orphaned start still counts."""
+    from research_foundry.services.leg_fulfilment import CallJournal, write_leg_receipts
+    from research_foundry.yamlio import load_yaml
+
+    journal = CallJournal(tmp_path)
+    done = journal.begin("carding-1", "carding", 1, "m", 20)
+    journal.record("carding-1", "carding", 1, "m", 7, False, 20, call_id=done)
+    journal.begin("carding-2", "carding", 1, "m", 20)  # process dies here: no record()
+
+    write_leg_receipts(tmp_path)
+    receipts = load_yaml(tmp_path / "leg_receipts.yaml")
+    assert receipts["calls_total"] == 2
+    by_id = {leg["id"]: leg for leg in receipts["legs"]}
+    assert by_id["carding-1"]["turns_used"] == 7 and by_id["carding-1"]["upper_bound"] is False
+    assert by_id["carding-2"]["turns_used"] == 20 and by_id["carding-2"]["upper_bound"] is True
