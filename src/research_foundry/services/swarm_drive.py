@@ -38,6 +38,7 @@ artifact and a re-run of a completed run is a pure no-op (FR-3).
 from __future__ import annotations
 
 import hashlib
+import re
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -47,7 +48,7 @@ from typing import Any
 from ..config import FoundryConfig
 from ..errors import BudgetError, ExitCode, RFError, SchemaError
 from ..ids import now_iso
-from ..paths import FoundryPaths, RunPaths
+from ..paths import FoundryPaths, RunPaths, distribution_root
 from ..yamlio import dump_yaml, load_yaml
 from . import governance, telemetry
 
@@ -202,15 +203,67 @@ _CLAIM_MAP_FEEDBACK_NOTE = (
     "artifact is the feedback surface (staged-artifact kind 'claim')."
 )
 
+# Fallback enums (finding node_01M38EDYFJYJFCTYXTETD60V2M): used only if
+# schemas/claim_ledger.schema.yaml cannot be read at import time. Kept equal
+# to that schema's own enums so the fallback path is never the drift source
+# again — see test_claim_schema_enums_match_ledger_schema.
+_CLAIM_SCHEMA_FALLBACK_ENUMS: dict[str, list[str]] = {
+    "claim_type": [
+        "factual",
+        "causal",
+        "comparative",
+        "quantitative",
+        "attribution",
+        "recommendation",
+        "prediction",
+    ],
+    "materiality": ["material", "background", "style"],
+    "status": ["supported", "mixed", "contradicted", "inference", "speculation", "unsupported"],
+    "relation": ["supports", "contradicts", "context"],
+}
+
+
+def _load_claim_schema_enums() -> dict[str, list[str]]:
+    """Read the claim_type/materiality/status/relation enums straight from
+    ``schemas/claim_ledger.schema.yaml`` (the authority claim_mapping._validate
+    enforces) so the leg-bundle ``_CLAIM_SCHEMA`` hint can never drift from it
+    again (finding node_01M38EDYFJYJFCTYXTETD60V2M). Falls back to a
+    hardcoded copy of the same enums if the schema file is unreadable.
+    """
+    schema_path = distribution_root() / "schemas" / "claim_ledger.schema.yaml"
+    try:
+        raw = load_yaml(schema_path)
+        item_props = raw["properties"]["claims"]["items"]["properties"]
+        source_props = item_props["sources"]["items"]["properties"]
+        return {
+            "claim_type": list(item_props["claim_type"]["enum"]),
+            "materiality": list(item_props["materiality"]["enum"]),
+            "status": list(item_props["status"]["enum"]),
+            "relation": list(source_props["relation"]["enum"]),
+        }
+    except Exception:  # noqa: BLE001 - any read/parse failure -> fallback
+        return dict(_CLAIM_SCHEMA_FALLBACK_ENUMS)
+
+
+_CLAIM_SCHEMA_ENUMS = _load_claim_schema_enums()
+
 # The claim entry shape Hermes must emit (mirrors claim_mapping.build_claim_ledger).
+# Enum members are sourced from schemas/claim_ledger.schema.yaml (see
+# _load_claim_schema_enums) so this hint can never drift from the schema
+# claim_mapping._validate actually enforces.
 _CLAIM_SCHEMA: dict[str, Any] = {
     "claim_id": "clm_NNN",
     "text": "str — the claim sentence",
-    "claim_type": "quantitative|qualitative|causal|comparative|temporal|general",
-    "materiality": "high|medium|low",
-    "status": "supported|inference|speculation",
+    "claim_type": "|".join(_CLAIM_SCHEMA_ENUMS["claim_type"]),
+    "materiality": "|".join(_CLAIM_SCHEMA_ENUMS["materiality"]),
+    "status": "|".join(_CLAIM_SCHEMA_ENUMS["status"]),
     "confidence": "low|medium|high",
-    "sources": [{"source_card_id": "src_… (from a carding leg)", "relation": "supports"}],
+    "sources": [
+        {
+            "source_card_id": "src_… (from a carding leg)",
+            "relation": "|".join(_CLAIM_SCHEMA_ENUMS["relation"]),
+        }
+    ],
 }
 
 
@@ -1304,6 +1357,34 @@ def _escalate_sensitivity_gate(
 # ---------------------------------------------------------------------------
 
 
+def _brief_title_objective(rp: RunPaths) -> tuple[str, str]:
+    """Read ``(title, objective-paragraph)`` from the research brief.
+
+    Title comes from the frontmatter ``title`` field; the objective is the
+    paragraph immediately following ``**Objective.**`` in the brief body.
+    Never raises — an unreadable/missing brief yields ``("", "")`` so callers
+    fall back to ``(ctx.objective, "")``.
+    """
+
+    title = ""
+    objective = ""
+    try:
+        if rp.research_brief.exists():
+            from ..frontmatter import load_md
+
+            front, body = load_md(rp.research_brief)
+            if isinstance(front, Mapping):
+                t = front.get("title")
+                if isinstance(t, str):
+                    title = t
+            m = re.search(r"\*\*Objective\.\*\*\s*(.*?)\n\s*\n", body or "", re.DOTALL)
+            if m:
+                objective = m.group(1).strip()
+    except Exception:  # noqa: BLE001 — the brief is best-effort context here
+        pass
+    return title, objective
+
+
 def _discover(
     ctx: DriveContext,
     rp: RunPaths,
@@ -1320,41 +1401,100 @@ def _discover(
     records the candidate locators. The write routes through
     :func:`redact_payload` (D5). Each provider's ``estimated_cost_usd`` is fed
     into the :class:`_BudgetGuard` (SCHED-002) so a cost ceiling can trip.
+
+    Queries are derived deterministically from the brief (title + objective)
+    via :func:`discovery_relevance.build_queries`, and every hit is scored
+    against the brief with :func:`discovery_relevance.relevance` — the
+    on-topic gate calibrated in M3b. Off-topic hits are still recorded (under
+    ``rejected_candidates``) for audit but never reach ``source_candidates``,
+    so carding/ingest never sees them (see :func:`_load_candidates`).
     """
 
+    from .discovery_relevance import (
+        brief_bigrams,
+        brief_terms,
+        build_queries,
+        relevance,
+    )
     from .search_router.modes import MODES
     from .search_router.policy import resolve_chain
     from .search_router.providers.base import all_providers
+
+    title, objective = _brief_title_objective(rp)
+    if not title and not objective:
+        objective = ctx.objective
+
+    queries = build_queries(title, objective) or [ctx.objective]
+    terms = brief_terms(title, objective)
+    phrases = brief_bigrams(title, objective)
 
     providers_map = dict(providers) if providers is not None else all_providers()
     chain = resolve_chain("free_discovery", providers=providers_map)
     budget = MODES["free_discovery"].budget
     max_results = int(budget.get("max_urls_to_extract", 8))
 
-    hits: list[dict[str, Any]] = []
-    for pid in chain:
-        provider = providers_map.get(pid)
-        if provider is None or "discovery" not in getattr(provider, "roles", ()):  # noqa: E501
-            continue
-        try:
-            if not provider.available():
-                continue
-            res = provider.search(ctx.objective, max_results=max_results, constraints={})
-        except Exception:  # noqa: BLE001 — a provider must never break the drive
-            continue
-        if guard is not None:
-            guard.add_cost(getattr(res, "estimated_cost_usd", 0.0))
-        for hit in res.hits:
-            # res.hits is list[SearchHit]; the real path always has .to_dict().
-            # The Mapping guard keeps the fallback type-clean (Pyright no longer
-            # sees a bare ``dict(hit)`` on a non-mapping) without changing behavior.
-            if hasattr(hit, "to_dict"):
-                hits.append(hit.to_dict())
-            elif isinstance(hit, Mapping):
-                hits.append(dict(hit))
+    kept: list[dict[str, Any]] = []
+    rejected: list[dict[str, Any]] = []
+    seen_urls: set[str] = set()
 
-    _redacted_dump({"source_candidates": hits}, rp.source_candidates, config=config)
-    return len(hits)
+    for query in queries:
+        for pid in chain:
+            provider = providers_map.get(pid)
+            if provider is None or "discovery" not in getattr(provider, "roles", ()):  # noqa: E501
+                continue
+            try:
+                if not provider.available():
+                    continue
+                res = provider.search(query, max_results=max_results, constraints={})
+            except Exception:  # noqa: BLE001 — a provider must never break the drive
+                continue
+            if guard is not None:
+                guard.add_cost(getattr(res, "estimated_cost_usd", 0.0))
+            for hit in res.hits:
+                # res.hits is list[SearchHit]; the real path always has .to_dict().
+                # The Mapping guard keeps the fallback type-clean (Pyright no longer
+                # sees a bare ``dict(hit)`` on a non-mapping) without changing behavior.
+                if hasattr(hit, "to_dict"):
+                    hit_d = hit.to_dict()
+                elif isinstance(hit, Mapping):
+                    hit_d = dict(hit)
+                else:
+                    continue
+                url = str(hit_d.get("url") or "")
+                if url and url in seen_urls:
+                    continue
+                if url:
+                    seen_urls.add(url)
+                hit_d["query"] = query
+                hit_d["relevance"] = relevance(hit_d, terms, query, phrases)
+                if hit_d["relevance"]["on_topic"]:
+                    kept.append(hit_d)
+                else:
+                    rejected.append(hit_d)
+
+    # Round-robin across queries so one sub-topic cannot crowd out the rest.
+    by_query: dict[str, list[dict[str, Any]]] = {}
+    for hit_d in kept:
+        by_query.setdefault(str(hit_d.get("query")), []).append(hit_d)
+    interleaved: list[dict[str, Any]] = []
+    while any(by_query.values()) and len(interleaved) < max_results:
+        for q in queries:
+            if by_query.get(q) and len(interleaved) < max_results:
+                interleaved.append(by_query[q].pop(0))
+    kept = interleaved
+    rule = relevance({}, terms, queries[0] if queries else "", phrases)["rule"]
+    doc = {
+        "source_candidates": kept,
+        "rejected_candidates": rejected,
+        "discovery": {
+            "queries": queries,
+            "rule": rule,
+            "kept": len(kept),
+            "rejected": len(rejected),
+        },
+    }
+    _redacted_dump(doc, rp.source_candidates, config=config)
+    return len(kept)
 
 
 def _ingest(
