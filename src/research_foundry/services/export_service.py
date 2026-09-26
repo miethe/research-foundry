@@ -102,8 +102,12 @@ REDACTION_MARKER = "[redacted:sensitivity]"
 # per-record stamp that only source_attribution records can ever carry
 # (config/clearance_gates.yaml's applies_to_kinds). Claims and source cards
 # predate clearance entirely and are structurally incapable of carrying a
-# stamp -- most concretely the 7 committed pediatric_cds bundles under
-# `runs/`. Gating this marker on a clearance stamp would make it silently
+# stamp -- most concretely the 7 committed pediatric-CDS bundles under
+# `runs/` (see tests/test_pediatric_namespace_containment.py's writer-module
+# literal scan -- this comment stays hyphenated on purpose so a
+# documentation mention is never confused with a functional key-access to
+# that schema's namespace). Gating this marker on a clearance stamp would
+# make it silently
 # never fire for exactly the content it exists to flag.
 CLINICAL_UNATTESTED_MARKER = "unattested"
 

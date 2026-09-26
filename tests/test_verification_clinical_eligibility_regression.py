@@ -58,6 +58,7 @@ from research_foundry.services.verification import (
     verify_report,
 )
 from research_foundry.yamlio import dump_yaml, load_yaml
+from tests.test_pediatric_cds_redteam_fixtures import requires_verified_bundles
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -91,6 +92,7 @@ def _load_claims(run_id: str) -> list[dict[str, Any]]:
     return [c for c in (ledger.get("claims") or []) if isinstance(c, dict)]
 
 
+@requires_verified_bundles
 def test_seven_verified_bundles_zero_eligible_claims():
     """AC-P3-6: the real regression corpus has ZERO claims that resolve
     eligible for the P3-001 auto-strict override — every pediatric_cds block
@@ -123,6 +125,7 @@ def test_seven_verified_bundles_zero_eligible_claims():
     )
 
 
+@requires_verified_bundles
 def test_seven_verified_bundles_exact_passage_present_never_hard_gated_by_p3():
     """Belt-and-suspenders on the same corpus, one level closer to
     ``verify_report()``'s own decision without incurring its write side

@@ -87,7 +87,7 @@
           "runs"
         ],
         "summary": "Launch a new run (scaffold + register only)",
-        "description": "Scaffold and register a new run over HTTP (scaffold + register only).\n\nAccepts either ``text`` (runs ``capture_idea`` -> ``triage_idea`` ->\n``plan_run``, mirroring ``rf capture`` -> ``rf triage`` -> ``rf plan``) or\n``intent_id`` (calls ``plan_run`` directly, mirroring\n``rf plan <intent_id>`` alone).\n\n**This endpoint does NOT spawn, drive, or poll the Path B Claude-agent\ndiscovery swarm** \u2014 see the Feature Contract Decision #1\n(``docs/project_plans/feature_contracts/features/http-run-launch-endpoint.md``).\n``status`` in the response is always ``\"planned\"`` on success; poll\n``GET /api/runs/{run_id}``'s ``status_derived`` field for actual progress\nonce a swarm has run against the returned ``run_id`` out-of-band.",
+        "description": "Scaffold and register a new run over HTTP (scaffold + register only).\n\nAccepts either ``text`` (runs ``capture_idea`` -> ``triage_idea`` ->\n``plan_run``, mirroring ``rf capture`` -> ``rf triage`` -> ``rf plan``) or\n``intent_id`` (calls ``plan_run`` directly, mirroring\n``rf plan <intent_id>`` alone).\n\n**This endpoint does NOT spawn, drive, or poll the Path B Claude-agent\ndiscovery swarm** \u2014 see the Feature Contract Decision #1\n(``docs/project_plans/feature_contracts/features/http-run-launch-endpoint.md``).\n``status`` in the response is always ``\"planned\"`` on success; poll\n``GET /api/runs/{run_id}``'s ``status_derived`` field for actual progress\nonce a swarm has run against the returned ``run_id`` out-of-band.\n\nThe scaffold is materialized under the server's workspace root resolved by\n``get_paths``, not the caller's. A remote caller receives only ``run_id``\nand has no local run directory. The ``rf`` CLI is workspace-local, so\n``rf <verb> <run_id>`` run on any other host will not find the run: read it\nback through ``GET /api/runs/{run_id}``, or operate on the server host.",
         "operationId": "launch_run_endpoint_api_runs_post",
         "requestBody": {
           "content": {
@@ -442,6 +442,61 @@
                   "type": "object",
                   "additionalProperties": true,
                   "title": "Response Get Run Anchors Api Reports  Run Id  Anchors Get"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/runs/{run_id}/drive": {
+      "post": {
+        "tags": [
+          "runs"
+        ],
+        "summary": "Drive a planned run through the swarm spine",
+        "description": "Thin wrapper over :func:`swarm_drive.drive_run` \u2014 drives one step of\n\nthe deterministic (or ICA leg-emit) swarm spine for an already-planned\nrun. See ``swarm_drive.drive_run`` for the actual pipeline; this route\nperforms no logic of its own beyond error mapping + audit.",
+        "operationId": "drive_run_endpoint_api_runs__run_id__drive_post",
+        "parameters": [
+          {
+            "name": "run_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Run Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DriveRunRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "title": "Response Drive Run Endpoint Api Runs  Run Id  Drive Post"
                 }
               }
             }
@@ -4931,6 +4986,22 @@
         "title": "CreateShareLinkBody",
         "description": "Body for POST /api/reports/{report_id}/share-links.\n\n*sensitivity_threshold* defaults to the draft's own sensitivity label when\nomitted.  The resolved threshold must be ``<=`` the draft's sensitivity rank\n(creating a share link at a *higher* threshold than the draft's label is\npermitted \u2014 the gate will still block access when the draft's label exceeds\nthe threshold at resolution time).\n\n*expires_at* is an optional ISO-8601 UTC timestamp after which the link is\nconsidered expired.  ``None`` means the link never expires (revocation is\nthe only mechanism to invalidate it)."
       },
+      "DriveRunRequest": {
+        "properties": {
+          "llm_legs": {
+            "type": "string",
+            "enum": [
+              "none",
+              "ica"
+            ],
+            "title": "Llm Legs",
+            "default": "none"
+          }
+        },
+        "type": "object",
+        "title": "DriveRunRequest",
+        "description": "Body for POST /api/runs/{run_id}/drive."
+      },
       "EvidencePacket": {
         "properties": {
           "packet_version": {
@@ -5380,7 +5451,7 @@
         },
         "type": "object",
         "title": "LaunchRunRequest",
-        "description": "Body for POST /api/runs.\n\nExactly one of ``text`` / ``intent_id`` is required \u2014 supplying both or\nneither is a 400 (raised as ``ValueError`` by\n:func:`~research_foundry.services.run_launch.launch_run` and mapped here).\n\n``title``, ``sensitivity``, ``urgency``, ``tags``, and ``backlog_idea_ref``\nare ``text``-path fields (forwarded to ``capture_idea``) and are ignored\nwhen ``intent_id`` is supplied instead. The remaining fields are common\nplanning passthrough forwarded to ``plan_run`` on both paths.\n\n``reuse_assertion``, ``reuse_workspace_id``, ``required_reuse_edition_id``,\nand ``required_extraction_contract`` are optional reuse-reachability\nfields (Phase 4 of the assertion-ledger activation plan). All four are\nabsent by default and, when omitted, ``run_launch.launch_run`` performs\nNO reuse evaluation at all -- launch behaves exactly as it did before\nthis field set existed. When ``reuse_assertion`` is supplied, it is\nrouted through the existing ``assertion_reuse.evaluate_reuse`` /\n``retrieve_first_reuse_decision`` seam (no new policy logic here); an\nineligible result (deny or refresh -- including a target denied via the\nexisting ``block_authoritative_reuse`` lifecycle path, or a cross-\nworkspace target) surfaces as a 400 via the existing\n``except ValueError`` mapping below.\n\n``visibility`` (DF-004) is the new run's read-visibility: ``\"workspace\"``\n(default) or ``\"public\"``. The owning ``workspace_id`` is NEVER taken\nfrom this request body -- it is always stamped server-side from\n``request.state.identity.workspace_id`` (or left ``None`` when no auth\nmiddleware is configured, i.e. single-operator-trust mode).\n\n``retrieval_policy`` and ``retrieval_limits`` (CARP-5.1) are optional\ncatalog-assisted-research-planning passthroughs, forwarded unmodified to\n``run_launch.launch_run`` -> ``plan_run``. Both absent (the default) is\nbyte-identical to the pre-CARP request shape: no evidence plan is built,\nand the response below omits ``evidence_plan_ref``/``retrieval_summary``\nentirely -- carp-contract-freeze.md \u00a71. ``retrieval_policy`` is one of\n``\"catalog_only\"`` / ``\"catalog_then_discovery\"``; any other value\n(including omission) is treated as ``\"disabled\"`` by ``plan_run`` --\nthere is no implicit network fallback from any state."
+        "description": "Body for POST /api/runs.\n\nExactly one of ``text`` / ``intent_id`` is required \u2014 supplying both or\nneither is a 400 (raised as ``ValueError`` by\n:func:`~research_foundry.services.run_launch.launch_run` and mapped here).\n\n``title``, ``sensitivity``, ``urgency``, and ``backlog_idea_ref`` are\n``text``-path fields (forwarded to ``capture_idea``) and are ignored when\n``intent_id`` is supplied instead. ``tags`` persist on the run record for\nboth paths; explicit request tags override backlog-derived tags, while\nomitted tags preserve the existing backlog-derived behavior. The remaining\nfields are common planning passthrough forwarded to ``plan_run`` on both\npaths.\n\n``reuse_assertion``, ``reuse_workspace_id``, ``required_reuse_edition_id``,\nand ``required_extraction_contract`` are optional reuse-reachability\nfields (Phase 4 of the assertion-ledger activation plan). All four are\nabsent by default and, when omitted, ``run_launch.launch_run`` performs\nNO reuse evaluation at all -- launch behaves exactly as it did before\nthis field set existed. When ``reuse_assertion`` is supplied, it is\nrouted through the existing ``assertion_reuse.evaluate_reuse`` /\n``retrieve_first_reuse_decision`` seam (no new policy logic here); an\nineligible result (deny or refresh -- including a target denied via the\nexisting ``block_authoritative_reuse`` lifecycle path, or a cross-\nworkspace target) surfaces as a 400 via the existing\n``except ValueError`` mapping below.\n\n``visibility`` (DF-004) is the new run's read-visibility: ``\"workspace\"``\n(default) or ``\"public\"``. The owning ``workspace_id`` is NEVER taken\nfrom this request body -- it is always stamped server-side from\n``request.state.identity.workspace_id`` (or left ``None`` when no auth\nmiddleware is configured, i.e. single-operator-trust mode).\n\n``retrieval_policy`` and ``retrieval_limits`` (CARP-5.1) are optional\ncatalog-assisted-research-planning passthroughs, forwarded unmodified to\n``run_launch.launch_run`` -> ``plan_run``. Both absent (the default) is\nbyte-identical to the pre-CARP request shape: no evidence plan is built,\nand the response below omits ``evidence_plan_ref``/``retrieval_summary``\nentirely -- carp-contract-freeze.md \u00a71. ``retrieval_policy`` is one of\n``\"catalog_only\"`` / ``\"catalog_then_discovery\"``; any other value\n(including omission) is treated as ``\"disabled\"`` by ``plan_run`` --\nthere is no implicit network fallback from any state."
       },
       "ReorderBlocksBody": {
         "properties": {
@@ -5646,13 +5717,6 @@
           "type": {
             "type": "string",
             "title": "Error Type"
-          },
-          "input": {
-            "title": "Input"
-          },
-          "ctx": {
-            "type": "object",
-            "title": "Context"
           }
         },
         "type": "object",

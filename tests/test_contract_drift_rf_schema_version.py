@@ -343,6 +343,7 @@ def _classify_cli_json_dumps_sites(source: str) -> dict[str, list[int]]:
     stamped: list[int] = []
     array_excluded: list[int] = []
     field_echo: list[int] = []
+    internal_state: list[int] = []
     unclassified: list[int] = []
 
     for m in re.finditer(r"_json\.dumps\(", source):
@@ -358,6 +359,13 @@ def _classify_cli_json_dumps_sites(source: str) -> dict[str, list[int]]:
             array_excluded.append(line_no)
         elif ident in {"val", "value"} and "isinstance" in after:
             field_echo.append(line_no)
+        elif "not a `--json` output surface" in preceding:
+            # Internal CLI-owned state written to disk (never returned to a
+            # caller as a --json response) -- e.g. the workspace-migrate
+            # linkage breadcrumb file. Excluded on the same "document the
+            # exemption at the call site" convention as array_excluded/
+            # field_echo, rather than a blanket skip of the whole scan.
+            internal_state.append(line_no)
         else:
             unclassified.append(line_no)
 
@@ -365,6 +373,7 @@ def _classify_cli_json_dumps_sites(source: str) -> dict[str, list[int]]:
         "stamped": stamped,
         "array_excluded": array_excluded,
         "field_echo": field_echo,
+        "internal_state": internal_state,
         "unclassified": unclassified,
     }
 
@@ -372,27 +381,29 @@ def _classify_cli_json_dumps_sites(source: str) -> dict[str, list[int]]:
 def test_cli_json_dumps_sites_fully_accounted_for():
     """Structural drift guard: fails red if a new dict-shaped ``--json``
     output is ever added to ``cli_commands.py`` without routing through
-    ``_stamp()`` (or without the documented array-root/field-echo exclusion
-    markers this test recognizes)."""
+    ``_stamp()`` (or without one of the documented exclusion markers this
+    test recognizes: array-root, field-echo, or internal-state)."""
 
     source = CLI_COMMANDS_PATH.read_text()
     result = _classify_cli_json_dumps_sites(source)
     assert result["unclassified"] == [], (
         "Found _json.dumps( call site(s) not routed through _stamp() and not "
         f"carrying a recognized exclusion marker: lines {result['unclassified']}. "
-        "Either wrap the payload in _stamp(...), or add the documented "
+        "Either wrap the payload in _stamp(...), add the documented "
         "'NOTE: root is a bare JSON array' comment for an intentional "
-        "array-root exclusion (see docs/dev/architecture/machine-surface-"
-        "inventory.md)."
+        "array-root exclusion, or add a 'not a `--json` output surface' "
+        "comment for internal (non-CLI-output) state (see docs/dev/"
+        "architecture/machine-surface-inventory.md)."
     )
 
 
 def test_cli_json_dumps_site_counts_match_pinned_baseline():
-    """Pinned to the current machine-surface-inventory.md count (27 stamped
-    dict-root sites, 5 documented array-root exclusions, 4 unrelated
-    single-field echo helpers = 36 total). Update this test's numbers
-    alongside the inventory doc when CLI --json surfaces are deliberately
-    added/removed — a silent count change here is itself a drift signal.
+    """Pinned to the current machine-surface-inventory.md count (31 stamped
+    dict-root sites, 6 documented array-root exclusions, 5 unrelated
+    single-field echo helpers, 1 internal-state exclusion = 43 total). Update
+    this test's numbers alongside the inventory doc when CLI --json surfaces
+    are deliberately added/removed — a silent count change here is itself a
+    drift signal.
 
     rights-entity-model-v1 fix-cycle (karen end-of-feature review): the `rf
     rights` command group added 4 new --json sites (`inspect`/`list`/
@@ -402,13 +413,27 @@ def test_cli_json_dumps_site_counts_match_pinned_baseline():
     `inspect` is dict-rooted -> stamped (26 -> 27); `list`/`validate`/
     `backfill` are bare-array-rooted, following the same documented
     array-root-exclusion convention as `rf run list`/`rf report draft list`
-    (2 -> 5); the 2 incidental field-echo matches bring that count to 4."""
+    (2 -> 5); the 2 incidental field-echo matches bring that count to 4.
+
+    itt-burndown-0926 (node_01M3FKQYK8CPRBVS99B067TXNH): re-measured against
+    the current tree and found four more legitimate drift sources the pinned
+    numbers had not caught up to yet, all pre-existing (none from this leg's
+    scope) — `attribution_validate`'s array-root `--json` output (5 -> 6),
+    `assertion_backfill`'s incidental field-echo match (4 -> 5), and four more
+    dict-rooted CLI `--json` sites correctly routed through `_stamp()` since
+    the rights-entity-model-v1 baseline (27 -> 31). Also newly accounted for:
+    the workspace-migrate linkage-breadcrumb file write
+    (`_write_workspace_run_link`, added 2026-07-30) was never a `--json`
+    output surface at all (it writes an internal disk-only linkage file) and
+    had been silently unclassified since; it now carries the internal-state
+    exclusion marker this test's classifier recognizes (0 -> 1)."""
 
     source = CLI_COMMANDS_PATH.read_text()
     result = _classify_cli_json_dumps_sites(source)
-    assert len(result["stamped"]) == 27
-    assert len(result["array_excluded"]) == 5
-    assert len(result["field_echo"]) == 4
+    assert len(result["stamped"]) == 31
+    assert len(result["array_excluded"]) == 6
+    assert len(result["field_echo"]) == 5
+    assert len(result["internal_state"]) == 1
 
 
 # ===========================================================================
