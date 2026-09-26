@@ -363,9 +363,14 @@ def test_export_run_report_anchors_reexport_is_byte_identical(
 
 
 def test_schema_version_bumped_for_report_anchors(tmp_foundry: FoundryPaths) -> None:
-    assert svc.EXPORT_SCHEMA_VERSION == "1.4"
+    """report_anchors landed at schema 1.4 (2026-07-05); the contract has since
+    moved on (1.9 -> 2.0 in 576778a, clearance-gates-v1 M4 — see
+    docs/dev/architecture/rf-run-export-schema.md's Changelog). This test's
+    job is confirming report_anchors is present at the CURRENT schema
+    version, not pinning the historical version that introduced it."""
+    assert svc.EXPORT_SCHEMA_VERSION == "2.0"
     run_id = "rf_run_anchors004"
     _build_minimal_run(tmp_foundry, run_id, report_md="## Sec\n\nBody.\n")
     data = svc.export_run(tmp_foundry, run_id)
-    assert data["schema_version"] == "1.4"
+    assert data["schema_version"] == "2.0"
     assert "report_anchors" in data
