@@ -116,7 +116,12 @@ def test_create_blank_draft_persists_to_disk(tmp_foundry: FoundryPaths) -> None:
     assert draft["status"] == "draft"
     assert draft["origin"] == "blank"
     assert draft["blocks"] == []
-    assert draft["workspace_id"] is None
+    # itt0926-rfdraft (node_01M3FHH0HNTSW8DMMQ1GZ0CNDM): identity=None and
+    # workspace_id omitted (the CLI's ``rf report create`` path) now defaults
+    # to the serve default "default" rather than persisting null — see
+    # test_create_draft_defaults_workspace_id_when_identity_and_workspace_id_omitted
+    # below for the dedicated regression coverage.
+    assert draft["workspace_id"] == "default"
     assert draft["created_by"] is None
 
     on_disk = tmp_foundry.report_draft_dir(draft["report_draft_id"]) / "draft.yaml"
@@ -136,6 +141,44 @@ def test_create_draft_rejects_unknown_enums(tmp_foundry: FoundryPaths) -> None:
 def test_load_draft_missing_raises_not_found(tmp_foundry: FoundryPaths) -> None:
     with pytest.raises(NotFoundError):
         bsvc.load_draft(tmp_foundry, "rpt_does_not_exist")
+
+
+# ---------------------------------------------------------------------------
+# itt0926-rfdraft (node_01M3FHH0HNTSW8DMMQ1GZ0CNDM): create_draft never
+# persists workspace_id: null for the identity=None (CLI) path — mirrors
+# planning.py's plan_run fix for node_01M1HV11263E3VNB2ZC0A0K1KZ.
+# ---------------------------------------------------------------------------
+
+
+def test_create_draft_defaults_workspace_id_when_identity_and_workspace_id_omitted(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """The CLI's ``rf report create`` never passes ``identity`` or
+    ``workspace_id`` — before this fix, ``draft.yaml``'s ``workspace_id`` was
+    written as ``null``, which the DF-004 read gate treats as a mismatch
+    (never a wildcard), so the very token that created the draft could 404
+    reading it back once workspace isolation enforcement is armed. It must
+    now default to the serve default ``"default"``."""
+
+    draft = bsvc.create_draft(tmp_foundry, title="Defaults Owner Workspace")
+
+    assert draft["workspace_id"] == "default"
+    reloaded = bsvc.load_draft(tmp_foundry, draft["report_draft_id"])
+    assert reloaded["workspace_id"] == "default"
+
+
+def test_create_draft_explicit_workspace_id_still_wins_over_default(
+    tmp_foundry: FoundryPaths,
+) -> None:
+    """An explicitly-passed ``workspace_id`` (identity still ``None``) is
+    unaffected by the new default — only the previously-``None`` branch's
+    persisted value changed."""
+
+    draft = bsvc.create_draft(
+        tmp_foundry, title="Explicit Workspace", workspace_id="ws_explicit"
+    )
+
+    assert draft["workspace_id"] == "ws_explicit"
 
 
 # ---------------------------------------------------------------------------
