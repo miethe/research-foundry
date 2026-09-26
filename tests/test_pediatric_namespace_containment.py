@@ -46,7 +46,10 @@ import pytest
 from research_foundry.frontmatter import load_md
 from research_foundry.paths import FoundryPaths
 from research_foundry.services import export_service
-from tests.test_pediatric_cds_redteam_fixtures import _VERIFIED_BUNDLE_RUN_IDS
+from tests.test_pediatric_cds_redteam_fixtures import (
+    _VERIFIED_BUNDLE_RUN_IDS,
+    requires_verified_bundles,
+)
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -148,6 +151,7 @@ def _iter_bundle_pediatric_cds_blocks():
 # --- Behavioural core: exercise the real _load_source_cards/_resolve_source ---
 
 
+@requires_verified_bundles
 def test_resolve_source_never_mutates_pediatric_cds_block():
     """Call the REAL production hydration function
     (``export_service._resolve_source``, the exact function the plan's own
@@ -221,6 +225,7 @@ def test_resolve_source_never_mutates_pediatric_cds_block():
     assert n_blocks_checked > 0, "expected >=1 pediatric_cds block exercised via _resolve_source"
 
 
+@requires_verified_bundles
 def test_export_run_pediatric_cds_namespace_stays_clean():
     """End-to-end behavioural check: run the REAL full export pipeline
     (``export_service.export_run``, which internally calls
@@ -248,6 +253,7 @@ def test_export_run_pediatric_cds_namespace_stays_clean():
     assert n_bundles_checked == 7
 
 
+@requires_verified_bundles
 def test_export_run_and_resolve_source_never_write_to_the_bundles():
     """Affirmative proof (not just a comment) that exercising the pipeline
     above never mutates the 7 committed bundles on disk: snapshot every
@@ -273,6 +279,7 @@ def test_export_run_and_resolve_source_never_write_to_the_bundles():
 # --- On-disk baseline: the blocks already committed carry none of the new keys ---
 
 
+@requires_verified_bundles
 def test_seven_bundles_pediatric_cds_blocks_carry_no_new_keys():
     """Baseline sanity: every ``pediatric_cds`` block actually committed
     across the 7 bundles is, today, already free of the plan's new keys.
@@ -294,6 +301,7 @@ def test_seven_bundles_pediatric_cds_blocks_carry_no_new_keys():
 # --- Non-vacuity proof: the forbidden-key check actually catches contamination ---
 
 
+@requires_verified_bundles
 def test_forbidden_key_check_is_non_vacuous_for_source_rank_injection():
     """Prove ``_forbidden_keys_in_block`` is not vacuous: inject a
     ``pediatric_cds.source_rank`` key (the plan's own example contamination)
@@ -319,6 +327,7 @@ def test_forbidden_key_check_is_non_vacuous_for_source_rank_injection():
         assert not _forbidden_keys_in_block(contaminated), "expected to go RED"
 
 
+@requires_verified_bundles
 def test_forbidden_key_check_also_catches_nested_trust_source_rank_and_attribution_summary():
     """A second non-vacuity case: the sibling-field / nested-namespace shape
     named in the plan (``trust.source_rank`` nested, and a full

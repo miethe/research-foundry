@@ -119,6 +119,7 @@ def _copy_bundle_run_readonly(paths: FoundryPaths, run_id: str) -> None:
     shutil.copytree(src, dst)
 
 
+@_p2_redteam.requires_verified_bundles
 def test_seven_verified_bundles_pass_verify_report_with_all_three_gates_active(tmp_foundry):
     """AC-SEAM-1: every one of the 7 verified pediatric-CDS bundles passes
     ``verify_report`` end-to-end with P2 (schema), P3 (eligibility), and P4

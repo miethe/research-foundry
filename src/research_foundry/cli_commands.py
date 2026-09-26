@@ -1879,6 +1879,10 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
 
         link_path = _workspace_run_link_path(paths, draft_migration_run_id)
         link_path.parent.mkdir(parents=True, exist_ok=True)
+        # NOTE: internal CLI-owned linkage breadcrumb written to disk --
+        # not a `--json` output surface returned to a caller, so excluded
+        # from the machine-surface --json inventory (see
+        # docs/dev/architecture/machine-surface-inventory.md).
         link_path.write_text(
             _json.dumps(
                 {"linked_migration_run_id": run_migration_run_id}, indent=2

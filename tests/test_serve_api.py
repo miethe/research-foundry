@@ -295,11 +295,22 @@ def test_list_runs_multiple_runs(tmp_path):
 
 
 def test_get_run_detail_known_run_returns_200(tmp_path):
-    """Known run_id → 200 with RFRunExport shape."""
+    """Known run_id → 200 with RFRunExport shape.
+
+    ``_plant_run``'s default ``sensitivity="personal"`` outranks this
+    endpoint's default ``sensitivity_threshold="public"``
+    (``export_service.DEFAULT_THRESHOLD``) under the P5.7.1 existence-gate
+    parity no-existence-leak check (``_enforce_existence_gate``) — same
+    pre-existing gate ``test_launch_run_text_path_returns_201_and_resolves_via_get``
+    already documents and overrides for. Pass the matching threshold
+    explicitly since this test is about the 200 shape, not the gate.
+    """
     client, cfg = _make_client(tmp_path)
     _plant_run(cfg.paths, "rf_run_detail_test")
 
-    resp = client.get("/api/runs/rf_run_detail_test")
+    resp = client.get(
+        "/api/runs/rf_run_detail_test", params={"sensitivity_threshold": "personal"}
+    )
     assert resp.status_code == 200
     data = resp.json()
     assert data["run_id"] == "rf_run_detail_test"
@@ -370,13 +381,22 @@ def test_get_run_detail_honors_serve_sensitivity_threshold_override(tmp_path):
 
 
 def test_get_claims_non_empty(tmp_path):
-    """Run with claims → non-empty list."""
+    """Run with claims → non-empty list.
+
+    Same P5.7.1 existence-gate-parity threshold override as
+    ``test_get_run_detail_known_run_returns_200`` — ``_plant_run``'s default
+    ``sensitivity="personal"`` outranks the endpoint's default
+    ``sensitivity_threshold="public"``.
+    """
     client, cfg = _make_client(tmp_path)
     _plant_run(cfg.paths, "rf_run_claims_test")
     _plant_source_card(cfg.paths, "rf_run_claims_test", "src_001")
     _plant_claim_ledger(cfg.paths, "rf_run_claims_test", "src_001")
 
-    resp = client.get("/api/runs/rf_run_claims_test/claims")
+    resp = client.get(
+        "/api/runs/rf_run_claims_test/claims",
+        params={"sensitivity_threshold": "personal"},
+    )
     assert resp.status_code == 200
     claims = resp.json()
     assert isinstance(claims, list)
@@ -385,11 +405,17 @@ def test_get_claims_non_empty(tmp_path):
 
 
 def test_get_claims_empty_ledger_returns_empty_list(tmp_path):
-    """Run with empty ledger → [] (not null or 404)."""
+    """Run with empty ledger → [] (not null or 404).
+
+    Same P5.7.1 existence-gate-parity threshold override as above.
+    """
     client, cfg = _make_client(tmp_path)
     _plant_run(cfg.paths, "rf_run_empty_claims")
 
-    resp = client.get("/api/runs/rf_run_empty_claims/claims")
+    resp = client.get(
+        "/api/runs/rf_run_empty_claims/claims",
+        params={"sensitivity_threshold": "personal"},
+    )
     assert resp.status_code == 200
     assert resp.json() == []
 
@@ -403,13 +429,20 @@ def test_get_claims_unknown_run_returns_404(tmp_path):
 
 
 def test_get_source_found(tmp_path):
-    """Source cited in claims → 200 with source shape."""
+    """Source cited in claims → 200 with source shape.
+
+    Same P5.7.1 existence-gate-parity threshold override as
+    ``test_get_run_detail_known_run_returns_200``.
+    """
     client, cfg = _make_client(tmp_path)
     _plant_run(cfg.paths, "rf_run_src_test")
     _plant_source_card(cfg.paths, "rf_run_src_test", "src_abc")
     _plant_claim_ledger(cfg.paths, "rf_run_src_test", "src_abc")
 
-    resp = client.get("/api/runs/rf_run_src_test/sources/src_abc")
+    resp = client.get(
+        "/api/runs/rf_run_src_test/sources/src_abc",
+        params={"sensitivity_threshold": "personal"},
+    )
     assert resp.status_code == 200
     src = resp.json()
     assert src["source_card_id"] == "src_abc"
@@ -625,10 +658,20 @@ def test_sensitivity_gate_parity_work_sensitive_claim(tmp_path):
     1. The route does NOT bypass the sensitivity gate.
     2. quote and summary are replaced with REDACTION_MARKER.
     3. API response == direct export_service call (parity invariant).
+
+    The RUN itself is planted at ``sensitivity="public"`` (not
+    ``"work_sensitive"``) so this test exercises the intended scenario --
+    per-claim/source redaction inside an otherwise-visible run -- rather
+    than the P5.7.1 whole-run existence-gate-parity 404 the plan phase
+    (`phase-7-deferred-sensitivity.md`, "Existence-gate parity") added to
+    this same endpoint for a run whose OWN declared sensitivity exceeds the
+    threshold. That gate is real and correct (proven separately by the
+    over-threshold-run tests below); it's simply orthogonal to what this
+    test's docstring is about, so the fixture must not trip it.
     """
     client, cfg = _make_client(tmp_path, sensitivity_threshold="public")
     run_id = "rf_run_gate_parity"
-    _plant_run(cfg.paths, run_id, sensitivity="work_sensitive")
+    _plant_run(cfg.paths, run_id, sensitivity="public")
     _plant_source_card(
         cfg.paths,
         run_id,

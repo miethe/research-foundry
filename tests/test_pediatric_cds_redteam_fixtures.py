@@ -58,6 +58,29 @@ _VERIFIED_BUNDLE_RUN_IDS = (
     "rf_run_20260717_rf_kid_001_pediatric_cds_evidence",
 )
 
+# itt-burndown-0926 (node_01M3FKQYK8CPRBVS99B067TXNH): the 7 bundles above
+# live in the private `research-foundry-data` repo, checked out via a dual
+# git-dir (`.git-data`) that only the primary checkout has set up -- a
+# `git worktree add` worktree (this one included) has no `.git-data` overlay,
+# so `runs/<bundle>` is absent here even though the main repo's `runs/`
+# directory itself is real (tracked-elsewhere, not gitignored data, per
+# .gitignore's `/runs/` "data plane lives in a separate repo" note). See
+# docs/project_plans/exploration/claim-term-indexing/spikes/risk-findings.md
+# for the same absence measured independently. This is an environment/
+# checkout gap, not a product regression -- skip explicitly on the missing
+# data rather than either faking bundle content or silently passing.
+_BUNDLES_PRESENT = all(
+    (_REPO_ROOT / "runs" / run_id / "sources").is_dir() for run_id in _VERIFIED_BUNDLE_RUN_IDS
+)
+requires_verified_bundles = pytest.mark.skipif(
+    not _BUNDLES_PRESENT,
+    reason=(
+        "the 7 verified pediatric-CDS bundles under runs/ are only present in "
+        "a checkout with the private research-foundry-data .git-data overlay "
+        "(absent in this worktree) -- see risk-findings.md"
+    ),
+)
+
 
 @pytest.fixture(autouse=True)
 def _clear_pediatric_cds_schema_cache():
@@ -142,6 +165,7 @@ def _iter_bundle_pediatric_cds_blocks():
                 yield card_path, point.get("evidence_id"), block
 
 
+@requires_verified_bundles
 def test_seven_verified_bundles_zero_false_positives():
     """AC-P2-10: the schema hard-gate must accept every pediatric_cds block
     already shipped in the 7 verified bundles. Any failure here is a
