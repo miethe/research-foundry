@@ -29,8 +29,9 @@ Mutation-route inventory covered (20 routes across 4 routers):
     POST   /reports/{report_id}/verify
     POST   /reports/{report_id}/publish-preview
 
-  runs_router (1):
+  runs_router (2):
     POST /runs — http-run-launch-endpoint contract (scaffold + register only)
+    POST /runs/{run_id}/drive — Option A phase 1 governed stage driver
 
   agent_jobs_router (3):
     POST /agent-jobs
@@ -224,19 +225,23 @@ class TestRunsRouterSweep:
         )
 
     def test_runs_has_expected_mutation_count(self):
-        """Regression guard: 1 mutation route in runs_router (http-run-launch-endpoint).
+        """Regression guard: 2 mutation routes in runs_router.
 
-        Was 0 prior to the http-run-launch-endpoint contract — see RBAC-005
-        audit comment in runs.py for the up-to-date route inventory.
+        Was 1 (POST /runs, http-run-launch-endpoint contract) until dfaa593
+        (feat(api): governed RF stage driver — drive endpoint + stage
+        receipts + ICA turn accounting) added POST /runs/{run_id}/drive,
+        gated via the same _RBAC_RUN_LAUNCH Depends(require_role(...)) — see
+        the RBAC-005/RBAC-901 audit comment in runs.py for the up-to-date
+        route inventory.
         """
         mutations = _collect_mutation_routes(runs_router)
-        assert len(mutations) == 1, (
-            f"Expected 1 mutation route in runs_router, found {len(mutations)}: {mutations}"
+        assert len(mutations) == 2, (
+            f"Expected 2 mutation routes in runs_router, found {len(mutations)}: {mutations}"
         )
 
     def test_expected_runs_mutation_routes_present(self):
         routes = {(m, p) for m, p in _collect_mutation_routes(runs_router)}
-        expected = {("POST", "/runs")}
+        expected = {("POST", "/runs"), ("POST", "/runs/{run_id}/drive")}
         missing = expected - routes
         extra = routes - expected
         assert not missing, f"Missing expected runs mutation routes: {missing}"
