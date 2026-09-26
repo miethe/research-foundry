@@ -18,6 +18,10 @@ properties:
       - meeting
       - manual
       - intenttree
+      # itt0926-rfws (node_01M1HV11263E3VNB2ZC0A0K1KZ): file/archive intakes
+      # (e.g. AOSBench research archives) were previously rejected outright.
+      - file
+      - archive
   title:
     type: string
   body:
