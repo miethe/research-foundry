@@ -308,7 +308,16 @@ class TestLaunchEndpoint:
         """workspace_id=null and created_by=null are accepted without error.
 
         Propagation contract for AC-4.5: these fields are nullable (D12, auth in P5).
-        The job record returned by GET /api/agent-jobs/{id} preserves them as null.
+        ``created_by`` is preserved as null. ``workspace_id`` is NOT preserved
+        as null: itt0926-rfjob (node_01M3FM2D6XCBBZ120YGK3N55QH, mirrors
+        ``builder_service.create_draft``'s fix for node_01M3FHH0HNTSW8DMMQ1GZ0CNDM)
+        — identity=None + workspace_id omitted/null (LAN single-user launches)
+        now defaults the persisted ``workspace_id`` to the serve default
+        ``"default"`` rather than writing ``null`` verbatim, so the launching
+        caller's own token cannot 404 reading the job back once workspace
+        isolation enforcement is armed. See
+        ``test_launch_defaults_workspace_id_when_identity_and_workspace_id_omitted``
+        below for the dedicated regression coverage.
         """
         body = {**_LAUNCH_BODY, "workspace_id": None, "created_by": None}
         with (
@@ -329,8 +338,71 @@ class TestLaunchEndpoint:
 
         assert resp.status_code == 201, resp.text
         job = resp.json()
-        assert job["workspace_id"] is None
+        assert job["workspace_id"] == "default"
         assert job["created_by"] is None
+
+    def test_launch_defaults_workspace_id_when_identity_and_workspace_id_omitted(
+        self, client: TestClient
+    ) -> None:
+        """LAN single-user launch (identity=None, workspace_id omitted) never
+        persists ``workspace_id: null``.
+
+        Regression for itt0926-rfjob (node_01M3FM2D6XCBBZ120YGK3N55QH):
+        ``agent_job_service.create_job``'s ``effective_workspace_id = workspace_id
+        if identity is None else identity.workspace_id`` wrote ``null`` verbatim
+        when both ``identity`` and ``workspace_id`` were absent — the exact shape
+        of the bug already fixed for ``create_draft`` and ``plan_run``. Fails on
+        the pre-fix service (asserts ``!= None`` too, which the old code failed).
+        """
+        body = {**_LAUNCH_BODY}
+        body.pop("workspace_id", None)
+        with (
+            patch(
+                "research_foundry.api.routers.agent_jobs.guard_check",
+                return_value=_passing_guard(),
+            ),
+            patch(
+                "research_foundry.services.agent_job_service.subprocess.Popen",
+                return_value=_mock_popen(),
+            ),
+            patch(
+                "research_foundry.services.agent_job_service.importlib.util.find_spec",
+                return_value=MagicMock(),
+            ),
+        ):
+            resp = client.post("/api/agent-jobs", json=body)
+
+        assert resp.status_code == 201, resp.text
+        job = resp.json()
+        assert job["workspace_id"] is not None
+        assert job["workspace_id"] == "default"
+
+    def test_launch_explicit_workspace_id_still_wins_over_default(
+        self, client: TestClient
+    ) -> None:
+        """An explicitly-passed ``workspace_id`` (identity still ``None``) is
+        unaffected by the new default — only the previously-``None`` branch's
+        persisted value changed."""
+        body = {**_LAUNCH_BODY, "workspace_id": "ws_explicit"}
+        with (
+            patch(
+                "research_foundry.api.routers.agent_jobs.guard_check",
+                return_value=_passing_guard(),
+            ),
+            patch(
+                "research_foundry.services.agent_job_service.subprocess.Popen",
+                return_value=_mock_popen(),
+            ),
+            patch(
+                "research_foundry.services.agent_job_service.importlib.util.find_spec",
+                return_value=MagicMock(),
+            ),
+        ):
+            resp = client.post("/api/agent-jobs", json=body)
+
+        assert resp.status_code == 201, resp.text
+        job = resp.json()
+        assert job["workspace_id"] == "ws_explicit"
 
 
 # ---------------------------------------------------------------------------

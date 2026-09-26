@@ -819,6 +819,18 @@ class AgentJobService:
             ``none``) is byte-identical to the pre-DF-004 behavior: the
             ``workspace_id`` parameter is stamped exactly as before.
 
+            itt0926-rfjob fix (node_01M3FM2D6XCBBZ120YGK3N55QH, mirrors
+            ``builder_service.create_draft``'s fix for
+            node_01M3FHH0HNTSW8DMMQ1GZ0CNDM and ``planning.plan_run``'s fix
+            for node_01M1HV11263E3VNB2ZC0A0K1KZ): when ``identity`` is
+            ``None`` and the caller also omits ``workspace_id`` (LAN
+            single-user launches, which pass neither), the persisted
+            ``workspace_id`` now defaults to the serve default
+            ``"default"`` instead of ``None``. A caller that DOES pass an
+            explicit ``workspace_id`` (or an ``identity``) is unaffected —
+            this only changes the previously-``None`` branch's persisted
+            value.
+
         **Agent-job identity binding (ACT-204, FR-12)**
             When ``deployment_mode() == "multi_user"`` AND
             ``agents.default_service_account_id`` is configured, the
@@ -861,8 +873,12 @@ class AgentJobService:
                 executing_created_by = service_account_id
 
         # DF-004: an authenticated identity's own workspace always wins over
-        # client-supplied workspace_id — see docstring above.
-        effective_workspace_id = workspace_id if identity is None else identity.workspace_id
+        # client-supplied workspace_id — see docstring above. itt0926-rfjob:
+        # identity=None + workspace_id omitted defaults to "default" instead
+        # of persisting null (mirrors create_draft/plan_run's fix).
+        effective_workspace_id = (
+            (workspace_id or "default") if identity is None else identity.workspace_id
+        )
 
         job_id = f"job_{stamp_compact()}_{uuid.uuid4().hex[:8]}"
         now = now_iso()
