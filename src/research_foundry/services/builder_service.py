@@ -491,6 +491,18 @@ def create_draft(
     behavior: the ``workspace_id`` parameter is stamped exactly as before, which
     is what the AC-6 single-operator baseline exercises.
 
+    itt0926-rfdraft fix (node_01M3FHH0HNTSW8DMMQ1GZ0CNDM, mirrors
+    :func:`research_foundry.services.planning.plan_run`'s ``effective_workspace_id``
+    fix for node_01M1HV11263E3VNB2ZC0A0K1KZ): when ``identity`` is ``None`` and the
+    caller also omits ``workspace_id`` (the CLI's ``rf report create`` path, which
+    passes neither), the persisted ``workspace_id`` now defaults to the serve
+    default ``"default"`` instead of ``None``. Previously ``workspace_id: null`` was
+    written verbatim, which the DF-004 read gate treats as a mismatch, never a
+    wildcard, so the owner token that created the draft could 404 reading it back
+    once workspace isolation enforcement is armed. A caller that DOES pass an
+    explicit ``workspace_id`` (or an ``identity``) is unaffected — this only
+    changes the previously-``None`` branch's persisted value.
+
     Returns the full persisted draft state (same shape as :func:`load_draft`).
     """
 
@@ -515,7 +527,7 @@ def create_draft(
         "audience": audience,
         "sensitivity": sensitivity,
         "status": "draft",
-        "workspace_id": workspace_id if identity is None else identity.workspace_id,
+        "workspace_id": (workspace_id or "default") if identity is None else identity.workspace_id,
         "project_id": project_id,
         "created_by": created_by,
         "updated_by": created_by,
