@@ -1525,12 +1525,53 @@ def _verification_block(rp: RunPaths, *, run_id: str | None) -> dict[str, Any]:
     }
 
 
+class OwnerScopeMiss(RFError):
+    """itt0926-rfws (node_01M1HV11263E3VNB2ZC0A0K1KZ, AC-3): an ``owner``-role
+    identity denied a run whose OWN ``workspace_id`` is ``None``/absent.
+
+    Deliberately narrower than "any workspace-scope denial for an owner
+    identity": a run genuinely scoped to a DIFFERENT, real workspace (e.g.
+    ``ws-owner`` vs. an ``owner``-role caller from ``ws-caller`` — a real
+    multi-tenant boundary; every token in a ``local_static`` config commonly
+    carries the ``owner`` role for its OWN workspace, per
+    ``tests/unit/test_runs_workspace_isolation.py``'s two-tenant fixture)
+    stays the existing no-existence-leak ``404`` UNCHANGED — leaking that a
+    hidden run id belongs to *some other* workspace is exactly the
+    cross-tenant existence leak DF-004 exists to prevent, and an ``owner``
+    role does not make a caller trustworthy of another tenant's data.
+
+    This exception is raised ONLY when the run's own ``workspace_id`` is
+    ``None``/absent — the exact symptom this node's CORRECTED CAUSE
+    describes (the pre-fix ``rf plan`` ``workspace_id: null`` defect, see
+    ``services/planning.py:plan_run``). A null-owned run has no *other*
+    tenant whose existence would be leaked by a more specific error — it
+    belongs to nobody yet, which is a data-repair situation (``rf run
+    set-workspace``), not a security boundary — so surfacing ``403`` with a
+    reason to the caller who could actually act on it (the owner) is safe
+    and more useful than folding it into the generic ``404``.
+    """
+
+    exit_code = ExitCode.USAGE
+
+    def __init__(self, run_id: str, *, record_workspace_id: str | None, identity_workspace_id: str) -> None:
+        self.run_id = run_id
+        self.record_workspace_id = record_workspace_id
+        self.identity_workspace_id = identity_workspace_id
+        super().__init__(
+            f"run {run_id!r} is scoped to workspace {record_workspace_id!r}, "
+            f"not the owner token's workspace {identity_workspace_id!r}",
+            exit_code=ExitCode.USAGE,
+        )
+
+
 # --- DF-004: workspace-scope read gate (runs) --------------------------------
 def _run_read_allowed(
     paths: FoundryPaths,
     run_meta: dict[str, Any],
     run_id: str,
     identity: AuthIdentity | None,
+    *,
+    raise_owner_scope_miss: bool = False,
 ) -> bool:
     """DF-004 workspace-scope read gate for a single run record.
 
@@ -1560,6 +1601,20 @@ def _run_read_allowed(
     ``workspace_scope_enforced_denial`` event, mirroring
     ``catalog_service.get_item``'s ``_log_enforced_denial_if_exists_elsewhere``
     and ``AgentJobService.load_job``) under enforcing mode.
+
+    Parameters
+    ----------
+    raise_owner_scope_miss:
+        itt0926-rfws AC-3. When ``True`` (only :func:`export_run` passes
+        this — :func:`list_runs` never does, so bulk listing keeps its
+        existing silent-omission contract unchanged) AND the denied
+        ``identity.roles`` contains ``"owner"`` AND the run's own
+        ``workspace_id`` is ``None``/absent, raises :class:`OwnerScopeMiss`
+        instead of returning ``False``. A genuine mismatch against a
+        real, non-null ``workspace_id`` (a real cross-tenant boundary) is
+        UNAFFECTED — still a plain ``False`` — regardless of role; see
+        :class:`OwnerScopeMiss`'s docstring for why the null-only scope
+        matters.
     """
 
     if identity is None:
@@ -1588,6 +1643,16 @@ def _run_read_allowed(
                 }
             )
         )
+        if (
+            raise_owner_scope_miss
+            and "owner" in identity.roles
+            and not run_meta.get("workspace_id")
+        ):
+            raise OwnerScopeMiss(
+                run_id,
+                record_workspace_id=run_meta.get("workspace_id"),
+                identity_workspace_id=identity.workspace_id,
+            )
         return False
     return True
 
@@ -1612,6 +1677,11 @@ def export_run(
     byte-identical to pre-DF-004 behavior — this function never returned
     ``None`` before, and cannot now that ``identity is None`` short-circuits
     :func:`_run_read_allowed` to always-allowed.
+
+    itt0926-rfws AC-3: an ``owner``-role identity's scope miss raises
+    :class:`OwnerScopeMiss` instead of returning ``None`` (see
+    :func:`_run_read_allowed`'s ``raise_owner_scope_miss`` doc) — the router
+    maps that to ``403`` with a reason rather than the generic ``404``.
     """
 
     rp = resolve_run_paths(paths, run_id)
@@ -1619,7 +1689,7 @@ def export_run(
     threshold_rank = _sensitivity_rank(threshold)
 
     run_meta = _load_yaml_dict(rp.run_yaml, run_id=run_id)
-    if not _run_read_allowed(paths, run_meta, run_id, identity):
+    if not _run_read_allowed(paths, run_meta, run_id, identity, raise_owner_scope_miss=True):
         return None
     bundle = _load_yaml_dict(rp.evidence_bundle, run_id=run_id)
     ledger = _load_yaml_dict(rp.claim_ledger, run_id=run_id)
