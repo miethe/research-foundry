@@ -42,7 +42,7 @@ The **static JSON export** path was selected because:
 - Static export aligns with the "CLIs are the contract" invariant — the SPA is a
   read-only consumer of a well-defined, frozen JSON shape.
 - No network daemon means no auth surface, no port-conflict risk, and trivially
-  predictable behavior on the operator's laptop and on `agentic-nuc`.
+  predictable behavior across operator machines and hosts.
 - Denormalizing the claim graph at export time (join once, in Python) keeps the
   SPA free of graph-join logic, which would be slow and would place logic on the
   recall path.
@@ -102,7 +102,7 @@ may not be relaxed without a superseding ADR.
 - `run_index.yaml` and `verification.yaml` may embed absolute paths (e.g.
   `run_dir`, `report_path`, `claim_ledger_path`) that reflect the machine and
   user home directory at write time. These break on any workspace move or
-  different host (e.g. `agentic-nuc`).
+  different host.
 - The export service derives every file path from `workspace_root` + `run_id` via
   `FoundryPaths.discover()`. Stored path fields are used for metadata only.
 - A unit test (`P1-PATHS-001`) asserts that no stored field from these files is
