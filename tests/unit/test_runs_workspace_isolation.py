@@ -172,6 +172,27 @@ def test_cross_workspace_get_is_indistinguishable_404_when_enforcing(
     assert caller_resp.json() == missing_resp.json()
 
 
+def test_owner_null_workspace_run_gets_403_not_404(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """itt0926-rfws (node_01M1HV11263E3VNB2ZC0A0K1KZ, AC-3): a run whose OWN
+    ``workspace_id`` is null/absent (the pre-fix ``rf plan`` symptom) is a
+    data-repair situation, not a real cross-tenant boundary -- no other
+    workspace's existence is at risk, so the ``owner``-role caller gets a
+    403 with a reason instead of the generic 404. This is narrower than the
+    cross-workspace case above (still 404, unchanged): the distinguishing
+    fact is the record's OWN workspace_id being null, not the identity's role.
+    """
+    cfg = _make_config_with_identities(tmp_path, monkeypatch)
+    _set_enforcement(monkeypatch, True)
+    _plant_run(cfg.paths, "run_null_ws", workspace_id=None)
+    client = _client(cfg)
+
+    resp = client.get("/api/runs/run_null_ws", headers=_auth("ws-owner"))
+    assert resp.status_code == 403, resp.text
+    assert "run_null_ws" in resp.json()["detail"]
+
+
 def test_public_run_readable_cross_workspace_even_when_enforcing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

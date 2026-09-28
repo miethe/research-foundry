@@ -324,3 +324,38 @@ def test_evidence_stopword_does_not_survive_alone_but_f1_fallback_still_rescues_
     terms = planning_module._lexical_terms(text)
     assert terms != ()
     assert "evidence" in terms
+
+
+# ---------------------------------------------------------------------------
+# itt0926-rfws (node_01M1HV11263E3VNB2ZC0A0K1KZ): rf plan never writes
+# workspace_id: null for the identity=None (CLI) path.
+# ---------------------------------------------------------------------------
+
+
+def test_plan_run_defaults_workspace_id_when_identity_and_workspace_id_omitted(
+    tmp_foundry, sample_idea_text
+):
+    """The CLI's ``rf plan`` never passes ``identity`` or ``workspace_id`` —
+    before this fix, ``run.yaml.workspace_id`` was written as ``null``,
+    which the DF-004 read gate treats as a mismatch (never a wildcard), so
+    the very token that planned the run could 404 reading it back once
+    workspace isolation enforcement is armed. It must now default to the
+    serve default ``"default"``."""
+
+    intent_id, _ = _make_intent(sample_idea_text, sensitivity="personal", tmp_foundry=tmp_foundry)
+    result = plan_run(intent_id, paths=tmp_foundry)
+
+    run_yaml = load_yaml(result.run_dir / "run.yaml")
+    assert run_yaml["workspace_id"] == "default"
+
+
+def test_plan_run_explicit_workspace_id_still_wins_over_default(tmp_foundry, sample_idea_text):
+    """An explicitly-passed ``workspace_id`` (identity still ``None``) is
+    unaffected by the new default — only the previously-``None`` branch's
+    persisted value changed."""
+
+    intent_id, _ = _make_intent(sample_idea_text, sensitivity="personal", tmp_foundry=tmp_foundry)
+    result = plan_run(intent_id, paths=tmp_foundry, workspace_id="ws_explicit")
+
+    run_yaml = load_yaml(result.run_dir / "run.yaml")
+    assert run_yaml["workspace_id"] == "ws_explicit"

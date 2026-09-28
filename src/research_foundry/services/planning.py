@@ -642,6 +642,15 @@ def plan_run(
         DF-004 owner field, written to ``run.yaml.workspace_id``.  Used only
         when ``identity`` is ``None`` (forward-compat, unenforced -- mirrors
         ``builder_service.create_draft``'s ``workspace_id`` parameter).
+        ``None``/falsy on that path now defaults to the serve default
+        (``"default"``) rather than being written verbatim -- see
+        ``effective_workspace_id`` below (itt0926-rfws / node
+        ``node_01M1HV11263E3VNB2ZC0A0K1KZ``: a caller-omitted value
+        previously produced ``workspace_id: null``, which the DF-004 read
+        gate (``export_service._run_read_allowed`` /
+        ``api.auth.scope.require_workspace_scope``) treats as a mismatch,
+        never a wildcard -- so the run silently 404'd for the very owner
+        token that planned it once workspace isolation is enforcing).
     visibility:
         DF-004 read-visibility field, written to ``run.yaml.visibility``.
         Either ``"workspace"`` (default -- readable only within the owning
@@ -756,7 +765,20 @@ def plan_run(
     # DF-004's stamping expression, named once so the CARP-4.2 evidence-plan
     # block below and the run_doc construction further down share the exact
     # same value (never re-derived, never drifting).
-    effective_workspace_id = workspace_id if identity is None else identity.workspace_id
+    #
+    # itt0926-rfws fix (node_01M1HV11263E3VNB2ZC0A0K1KZ): when ``identity``
+    # is ``None`` (the CLI's ``rf plan`` path, which never passes one) and
+    # the caller also omitted ``workspace_id``, fall back to the serve
+    # default ``"default"`` rather than persisting ``None``. Previously a
+    # plan-time ``workspace_id: null`` was indistinguishable from a genuine
+    # cross-workspace record to the DF-004 read gate, so the owner token
+    # that planned the run could get a 404 reading it back once workspace
+    # isolation enforcement is armed. Any caller that DOES pass an explicit
+    # ``workspace_id`` (or an ``identity``) is unaffected -- this only
+    # changes the previously-``None`` branch's persisted value.
+    effective_workspace_id = (
+        (workspace_id or "default") if identity is None else identity.workspace_id
+    )
 
     run = paths.run_paths(run_id).ensure_scaffold()
 

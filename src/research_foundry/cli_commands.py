@@ -1600,6 +1600,56 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
         # unstamped; see docs/dev/architecture/machine-surface-inventory.md.
         typer.echo(_json.dumps(summaries, ensure_ascii=False, indent=2))
 
+    @run_app.command("set-visibility")
+    def run_set_visibility(
+        run_id: str = typer.Argument(..., help="run id"),
+        value: str = typer.Argument(..., help="workspace | public"),
+    ) -> None:
+        """Repair a run's DF-004 ``visibility`` field (itt0926-rfws).
+
+        Unlike plan-time defaulting, an unrecognised *value* is refused
+        outright rather than silently coerced.
+        """
+
+        import json as _json
+
+        from .paths import FoundryPaths
+        from .services import run_admin as svc
+
+        paths = FoundryPaths.discover()
+        try:
+            data = svc.set_run_visibility(paths, run_id, value)
+        except svc.RunAdminError as exc:
+            _fail(exc)
+        console.print(f"[green]visibility set[/green] {run_id} -> {value}")
+        typer.echo(_json.dumps({"run_id": run_id, "visibility": data.get("visibility")}, ensure_ascii=False))
+
+    @run_app.command("set-workspace")
+    def run_set_workspace(
+        run_id: str = typer.Argument(..., help="run id"),
+        workspace_id: str = typer.Argument(..., help="new workspace_id"),
+    ) -> None:
+        """Repair a run's DF-004 ``workspace_id`` field (itt0926-rfws).
+
+        Unconditional single-run repair — unlike
+        ``rf workspace migrate-runs --apply``'s bulk backfill (which only
+        touches runs whose ``workspace_id`` is currently falsy), this
+        overwrites *run_id*'s ``workspace_id`` regardless of its prior value.
+        """
+
+        import json as _json
+
+        from .paths import FoundryPaths
+        from .services import run_admin as svc
+
+        paths = FoundryPaths.discover()
+        try:
+            data = svc.set_run_workspace(paths, run_id, workspace_id)
+        except svc.RunAdminError as exc:
+            _fail(exc)
+        console.print(f"[green]workspace_id set[/green] {run_id} -> {workspace_id}")
+        typer.echo(_json.dumps({"run_id": run_id, "workspace_id": data.get("workspace_id")}, ensure_ascii=False))
+
     app.add_typer(run_app, name="run")
 
     # ----- catalog (shared evidence catalog, public-multiuser-release Phase 1) -----

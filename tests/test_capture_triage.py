@@ -49,6 +49,23 @@ def test_capture_writes_valid_raw_idea(tmp_foundry, sample_idea_text):
     assert res.ok, res.errors
 
 
+@pytest.mark.parametrize("captured_from", ["file", "archive"])
+def test_capture_accepts_file_and_archive_captured_from(
+    tmp_foundry, sample_idea_text, captured_from
+):
+    """itt0926-rfws (node_01M1HV11263E3VNB2ZC0A0K1KZ): the raw_idea schema's
+    ``captured_from`` enum previously rejected file/archive intakes (e.g. the
+    AOSBench research archive), even though ``capture_idea`` itself never
+    validated the value against a fixed set."""
+
+    result = capture_idea(sample_idea_text, captured_from=captured_from, paths=tmp_foundry)
+    assert result.data["captured_from"] == captured_from
+
+    meta, _ = load_md(result.path)
+    res = validate(meta, "raw_idea")
+    assert res.ok, res.errors
+
+
 def test_capture_defaults_title_from_text(tmp_foundry):
     text = "alpha beta gamma delta epsilon zeta eta theta iota kappa"
     result = capture_idea(text, paths=tmp_foundry)

@@ -42,6 +42,7 @@ from ...services.clearance import ClearanceDenied
 from ...services.export_service import (
     SENSITIVITY_ORDER,
     ExportError,
+    OwnerScopeMiss,
     export_run,
     list_runs,
     resolve_threshold,
@@ -132,7 +133,15 @@ def _enforce_existence_gate(
             threshold, **or** the run is workspace-scoped away from
             *identity* (DF-004) — all three cases are intentionally
             indistinguishable so that hidden/other-workspace run IDs are
-            never leaked (no-existence-leak / landmine #4; never a 403).
+            never leaked (no-existence-leak / landmine #4; never a 403 for a
+            genuine cross-tenant mismatch, regardless of role).
+
+            itt0926-rfws AC-3: the ONE exception is an ``owner``-role
+            *identity* denied a run whose OWN ``workspace_id`` is
+            ``None``/absent (not a real cross-tenant mismatch — see
+            :class:`~research_foundry.services.export_service.OwnerScopeMiss`
+            for why null-owned records carry no leak risk) — that surfaces
+            as ``403`` with a reason instead.
     """
     try:
         threshold = resolve_threshold(paths, sensitivity_threshold)
@@ -146,6 +155,10 @@ def _enforce_existence_gate(
     # the same override used for the existence gate.
     try:
         data = export_run(paths, run_id, sensitivity_threshold=threshold, identity=identity)
+    except OwnerScopeMiss as exc:
+        # itt0926-rfws AC-3: never a no-existence-leak 404 for the owner —
+        # surfaced as a decision (403) with the reason, per the class docstring.
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ClearanceDenied as exc:
         # clearance-gates-v1 M5: export_run() now mediates every citation's
         # raw source-card record before projecting it (export_service.py
