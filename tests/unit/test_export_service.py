@@ -2580,3 +2580,121 @@ def test_provenance_lineage_populated_from_the_same_reader_the_api_uses(
     assert "_provenance_lineage" not in claim
     assert packet["report_uses"] == []
     assert packet["run_facets"] == {run_id: None}
+
+
+# ---------------------------------------------------------------------------
+# itt0926-rfws (node_01M1HV11263E3VNB2ZC0A0K1KZ), AC-3: an owner-role
+# identity's DF-004 workspace-scope miss on ``export_run`` against a run
+# whose OWN workspace_id is None/absent raises OwnerScopeMiss instead of
+# returning None -- but ONLY for the owner role, ONLY for a null record
+# workspace_id (a genuine cross-tenant mismatch stays a plain 404 regardless
+# of role -- tests/unit/test_runs_workspace_isolation.py's two-owner-tenant
+# fixture pins that), ONLY on export_run (never list_runs), and ONLY under
+# active enforcement.
+# ---------------------------------------------------------------------------
+
+
+def _force_isolation_active(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Same convention as ``tests/test_workspace_isolation_enforcement.py``:
+    monkeypatch the real ``FoundryConfig`` resolver, never a private helper."""
+
+    from research_foundry.config import FoundryConfig
+
+    monkeypatch.setattr(
+        FoundryConfig,
+        "resolve_workspace_isolation_enforced",
+        lambda self, provider, bind_host: True,
+    )
+
+
+def _set_run_workspace_id(rp: RunPaths, workspace_id) -> None:
+    from research_foundry.yamlio import load_yaml
+
+    data = load_yaml(rp.run_yaml)
+    data["workspace_id"] = workspace_id
+    dump_yaml(data, rp.run_yaml)
+
+
+def test_export_run_owner_vs_real_cross_tenant_mismatch_still_returns_none(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A genuine cross-tenant mismatch (the run's workspace_id is a real,
+    non-null OTHER workspace) is NEVER promoted to OwnerScopeMiss, even for
+    an owner-role caller -- every token in a local_static config commonly
+    carries the ``owner`` role for its own workspace
+    (tests/unit/test_runs_workspace_isolation.py), so treating "owner" alone
+    as a bypass would leak cross-tenant existence. Only a null/absent record
+    workspace_id (no real other tenant to leak) gets OwnerScopeMiss."""
+
+    from research_foundry.api.auth.provider import AuthIdentity
+    from research_foundry.config import FoundryConfig
+
+    monkeypatch.setattr(FoundryConfig, "auth_provider", lambda self: "local_static")
+    _force_isolation_active(monkeypatch)
+
+    rp = build_run(tmp_foundry, run_id="rf_run_owner_scope_miss")
+    _set_run_workspace_id(rp, "ws-other")
+
+    owner = AuthIdentity("agent", "default", ("owner",))
+    assert svc.export_run(tmp_foundry, "rf_run_owner_scope_miss", identity=owner) is None
+
+
+def test_export_run_owner_scope_miss_covers_null_workspace_id(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The exact symptom this node fixes: a run planned with
+    ``workspace_id: null`` (pre-fix ``rf plan`` bug) 404'd for the owner
+    token. It must now surface as OwnerScopeMiss (-> 403), not a silent
+    ``None`` (-> 404)."""
+
+    from research_foundry.api.auth.provider import AuthIdentity
+    from research_foundry.config import FoundryConfig
+
+    monkeypatch.setattr(FoundryConfig, "auth_provider", lambda self: "local_static")
+    _force_isolation_active(monkeypatch)
+
+    rp = build_run(tmp_foundry, run_id="rf_run_null_workspace")
+    _set_run_workspace_id(rp, None)
+
+    owner = AuthIdentity("agent", "default", ("owner",))
+    with pytest.raises(svc.OwnerScopeMiss):
+        svc.export_run(tmp_foundry, "rf_run_null_workspace", identity=owner)
+
+
+def test_export_run_non_owner_scope_miss_still_returns_none(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No-existence-leak invariant preserved for every non-owner identity —
+    unaffected by the owner-only carve-out."""
+
+    from research_foundry.api.auth.provider import AuthIdentity
+    from research_foundry.config import FoundryConfig
+
+    monkeypatch.setattr(FoundryConfig, "auth_provider", lambda self: "local_static")
+    _force_isolation_active(monkeypatch)
+
+    rp = build_run(tmp_foundry, run_id="rf_run_non_owner_scope_miss")
+    _set_run_workspace_id(rp, "ws-other")
+
+    researcher = AuthIdentity("bob", "default", ("researcher",))
+    assert svc.export_run(tmp_foundry, "rf_run_non_owner_scope_miss", identity=researcher) is None
+
+
+def test_list_runs_owner_scope_miss_still_silently_omits(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``list_runs`` never passes ``raise_owner_scope_miss`` -- bulk listing
+    keeps its existing silent-omission contract even for the owner role."""
+
+    from research_foundry.api.auth.provider import AuthIdentity
+    from research_foundry.config import FoundryConfig
+
+    monkeypatch.setattr(FoundryConfig, "auth_provider", lambda self: "local_static")
+    _force_isolation_active(monkeypatch)
+
+    rp = build_run(tmp_foundry, run_id="rf_run_owner_list_miss")
+    _set_run_workspace_id(rp, "ws-other")
+
+    owner = AuthIdentity("agent", "default", ("owner",))
+    summaries = svc.list_runs(tmp_foundry, identity=owner)
+    assert all(s.get("run_id") != "rf_run_owner_list_miss" for s in summaries)
