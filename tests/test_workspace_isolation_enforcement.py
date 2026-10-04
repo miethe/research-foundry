@@ -70,6 +70,7 @@ from research_foundry.errors import NotFoundError
 from research_foundry.paths import FoundryPaths, RunPaths
 from research_foundry.services import agent_job_service, builder_service, catalog_service
 from research_foundry.services.agent_job_service import AgentJobService
+from research_foundry.services.export_service import OwnerScopeMiss
 from research_foundry.yamlio import dump_yaml, load_yaml
 
 # ---------------------------------------------------------------------------
@@ -1436,7 +1437,12 @@ class TestCreateDraftFromRunAndCollectionIdentityThreading:
 
         _plant_minimal_run(tmp_foundry, "rf_run_p5followup_ownerless")
         _force_isolation_active(monkeypatch)
-        with pytest.raises(NotFoundError):
+        # Still DENIED. Since itt0926-rfws (#49, node_01M1HV11263E3VNB2ZC0A0K1KZ)
+        # an owner-role caller is told *why* via OwnerScopeMiss (a null-owned run
+        # has no other tenant whose existence could leak -- see the exception's
+        # docstring) instead of the generic 404; the cross-workspace case below
+        # stays NotFoundError (node_01M24QWV6W45KKDHNYFWEZTMZ7).
+        with pytest.raises(OwnerScopeMiss):
             builder_service.create_draft_from_run(
                 tmp_foundry, run_id="rf_run_p5followup_ownerless", identity=_WS_MINE
             )

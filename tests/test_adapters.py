@@ -13,7 +13,21 @@ import pytest
 
 from research_foundry import adapters
 from research_foundry.adapters import AdapterResult, get_adapter, load_all
+from research_foundry.adapters.base import module_available
 from research_foundry.adapters.litellm_router import LiteLLMRouterAdapter
+
+
+def _skip_if_optional_dep_installed(adapter) -> None:
+    """Precondition guard: an operator env that happens to have an optional
+    SDK installed (e.g. ``claude_agent_sdk``/``litellm`` in the ambient
+    interpreter) is not a regression of the degraded path these tests pin."""
+
+    installed = [m for m in getattr(adapter, "requires", ()) if module_available(m)]
+    if installed:
+        pytest.skip(
+            f"precondition: optional dependency {installed} NOT installed -- "
+            "this test pins the degraded path (node_01M24QWV6W45KKDHNYFWEZTMZ7)"
+        )
 
 _EXPECTED_IDS = {
     "claude_agent_sdk",
@@ -37,6 +51,7 @@ def test_each_adapter_unavailable_and_degrades(adapter_id):
     load_all()
     adapter = get_adapter(adapter_id)
     assert adapter is not None
+    _skip_if_optional_dep_installed(adapter)
     # Optional deps absent + no opencode binary -> not available in this env.
     assert adapter.available() is False
     result = adapter.run({})
