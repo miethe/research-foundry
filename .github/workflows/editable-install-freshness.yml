@@ -1,0 +1,24 @@
+name: Editable-install freshness
+
+on:
+  push:
+    branches: [development]
+  pull_request:
+    branches: [development]
+  workflow_dispatch:
+
+jobs:
+  editable-install-freshness:
+    runs-on: [self-hosted, linux, agentic-nuc]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check editable-install freshness
+        shell: bash
+        run: |
+          launchpad="${AOS_LAUNCHPAD:-${GITHUB_WORKSPACE}/../agentic_meta_dev}"
+          shim="$launchpad/scripts/check_editable_freshness.py"
+          if [[ ! -f "$shim" ]]; then
+            echo "::warning::SKIP editable-install freshness: launchpad shim unavailable at $shim"
+            exit 0
+          fi
+          python3 "$shim" --only rf
