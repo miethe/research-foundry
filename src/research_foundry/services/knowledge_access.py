@@ -152,6 +152,7 @@ from .export_service import (
     _title_from_slug,
     export_run,
     list_runs,
+    resolve_run_paths,
     resolve_threshold,
 )
 
@@ -1129,6 +1130,39 @@ def _build_receipt(
 # ---------------------------------------------------------------------------
 
 
+# Shape of catalog_service._make_item_id's output; anything else in the
+# opaque slot of a `rfk:v1:source:` id is treated as a source_card_id.
+_CATALOG_ITEM_ID_RE = re.compile(r"^ci_[0-9a-f]{12}$")
+_SAFE_CARD_FILE_RE = re.compile(r"^[A-Za-z0-9._~-]+\.md$")
+
+
+def _registration_of(payload: Mapping[str, Any]) -> dict[str, Any] | None:
+    """The ``registration`` block of an uncited registered-source payload, or
+    ``None`` for a claim-derived source row (whose behavior is unchanged)."""
+
+    block = payload.get("registration")
+    return block if isinstance(block, dict) else None
+
+
+def _scalar_or_none(value: Any) -> str | None:
+    return value if isinstance(value, str) and value else None
+
+
+def _source_knowledge_id(row: Mapping[str, Any], payload: Mapping[str, Any]) -> str:
+    """Search-result id for one source row: an uncited registered card is
+    addressed by its stable ``source_card_id``; every claim-derived row keeps
+    its pre-existing ``ci_`` catalog item id (unchanged)."""
+
+    local_ref = row["local_ref"]
+    if (
+        _registration_of(payload) is not None
+        and isinstance(local_ref, str)
+        and _OPAQUE_ID_RE.match(f"rfk:v1:source:{local_ref}")
+    ):
+        return f"rfk:v1:source:{local_ref}"
+    return f"rfk:v1:source:{row['catalog_item_id']}"
+
+
 class SourceKindProjector:
     """KMCP-3.1: governed ``source`` catalog projection.
 
@@ -1154,6 +1188,32 @@ class SourceKindProjector:
     def __init__(self, paths: FoundryPaths | None = None) -> None:
         self.paths = paths or FoundryPaths.discover()
 
+    def _check_registered_card_current(
+        self, row: Mapping[str, Any], registration: Mapping[str, Any]
+    ) -> None:
+        """Fail an uncited-card reference explicitly when its projection is stale.
+
+        Read-only: re-hashes the card file the projection was built from.
+        Missing run/card -> ``reference_unavailable``; a missing digest or a
+        digest mismatch (card rewritten since import) -> ``stale_reference``.
+        Both collapse to the generic denial at every transport, never to a
+        served stale document.
+        """
+
+        card_file = registration.get("card_file")
+        expected = registration.get("card_sha256")
+        if not isinstance(card_file, str) or not _SAFE_CARD_FILE_RE.match(card_file):
+            raise KnowledgeDenied("reference_unavailable")
+        if not isinstance(expected, str) or not expected:
+            raise KnowledgeDenied("stale_reference")
+        try:
+            card_path = resolve_run_paths(self.paths, str(row["run_id"])).sources / card_file
+            data = card_path.read_bytes()
+        except (ExportError, OSError) as exc:
+            raise KnowledgeDenied("reference_unavailable") from exc
+        if hashlib.sha256(data).hexdigest() != expected:
+            raise KnowledgeDenied("stale_reference")
+
     def _where_clause(self, context: KnowledgeAccessContext) -> tuple[str, list[Any]]:
         where = ["item_type = 'source'", "sensitivity_rank <= ?"]
         params: list[Any] = [context.sensitivity_rank]
@@ -1176,7 +1236,7 @@ class SourceKindProjector:
         try:
             with catalog_service.query_only_connection(self.paths) as conn:
                 rows = conn.execute(
-                    "SELECT catalog_item_id, title, payload_json FROM catalog_items "
+                    "SELECT catalog_item_id, local_ref, title, payload_json FROM catalog_items "
                     f"WHERE {where_sql} AND search_text LIKE ? "
                     "ORDER BY catalog_item_id LIMIT ?",
                     [*params, f"%{query.lower()}%", limit],
@@ -1206,7 +1266,7 @@ class SourceKindProjector:
             snippet_source = None
             if allowed:
                 snippet_source = allowed[0]["summary"] or allowed[0]["quote"]
-            item_id = f"rfk:v1:source:{row['catalog_item_id']}"
+            item_id = _source_knowledge_id(row, payload)
             items.append(
                 RfKnowledgeSearchResultItem(
                     id=item_id,
@@ -1229,18 +1289,38 @@ class SourceKindProjector:
         if not catalog_service.is_catalog_available(self.paths):
             raise KnowledgeDenied("projection_unavailable")
         where_sql, params = self._where_clause(context)
+        # Two reference forms resolve here, both through the SAME sensitivity/
+        # workspace WHERE clause: the derived `ci_<sha1-12>` catalog item id
+        # (unchanged), and the stable `source_card_id` the card was registered
+        # under (node_01M44WQKMNDCYH3RP5NMNRZ7P6) -- the form a consumer pins.
+        by_catalog_item_id = _CATALOG_ITEM_ID_RE.match(opaque) is not None
         try:
             with catalog_service.query_only_connection(self.paths) as conn:
-                row = conn.execute(
-                    f"SELECT * FROM catalog_items WHERE catalog_item_id = ? AND {where_sql}",
-                    [opaque, *params],
-                ).fetchone()
+                if by_catalog_item_id:
+                    rows = conn.execute(
+                        f"SELECT * FROM catalog_items WHERE catalog_item_id = ? AND {where_sql}",
+                        [opaque, *params],
+                    ).fetchall()
+                else:
+                    rows = conn.execute(
+                        f"SELECT * FROM catalog_items WHERE local_ref = ? AND {where_sql} "
+                        "ORDER BY catalog_item_id LIMIT 2",
+                        [opaque, *params],
+                    ).fetchall()
         except catalog_service.CatalogUnavailable as exc:
             raise KnowledgeDenied("projection_unavailable") from exc
-        if row is None:
+        if not rows:
             raise KnowledgeDenied("not_found")
+        if len(rows) > 1:
+            # The same source_card_id visible in more than one run: refuse
+            # rather than silently pick one (a pin must name ONE card).
+            raise KnowledgeDenied("ambiguous_reference")
+        row = rows[0]
 
         payload = _load_source_payload(row["payload_json"])
+        registration = _registration_of(payload)
+        if registration is not None:
+            self._check_registered_card_current(row, registration)
         # clearance-gates-v1 M5: mediate BEFORE deriving any document field
         # (text, evidence_points, rf_metadata) from the raw payload.
         # `paths=self.paths` threads THIS projector's workspace (M5 gate
@@ -1268,6 +1348,19 @@ class SourceKindProjector:
                 "source_card_id": row["local_ref"],
             },
         }
+        if registration is not None:
+            # Uncited registered card: surface its verbatim fidelity state and
+            # the fixed "nothing verified" constants. Allowlisted -- never the
+            # card file name or digest.
+            rf_metadata["registration"] = {
+                "source_ref": f"rfk:v1:source:{row['local_ref']}",
+                "citation_state": registration.get("citation_state"),
+                "extraction_status": registration.get("extraction_status"),
+                "claim_verification": registration.get("claim_verification"),
+                "bibliographic_verification": registration.get("bibliographic_verification"),
+                "full_text_verification": registration.get("full_text_verification"),
+                "doi": _scalar_or_none(payload.get("doi")),
+            }
         return RfKnowledgeDocument(
             id=knowledge_id,
             title=title,
