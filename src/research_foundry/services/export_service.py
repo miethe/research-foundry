@@ -888,6 +888,92 @@ def _resolve_source(
     return resolved
 
 
+# Extraction-fidelity vocabulary of ``source_cards.ExtractionStatus`` -- held by
+# value here (not imported) so this module never depends on the ingest module.
+# A card whose ``extraction_status`` is absent or outside this set is reported
+# as ``None`` ("unknown"), never inferred or promoted.
+_REGISTERED_EXTRACTION_STATUSES = frozenset({"full_text", "partial", "locator_only"})
+
+
+def export_registered_sources(paths: FoundryPaths, run_id: str) -> list[dict[str, Any]]:
+    """Card-level projection of EVERY source card registered under ``run_id``.
+
+    The export-layer read for source cards that need not be cited by any claim
+    (e.g. locator-only cards registered by DOI/ISBN/URL for a reading pack).
+    It exists so :mod:`catalog_service` can project an uncited card without
+    breaking its "import via the export layer, never parse source-card files
+    directly" invariant -- and WITHOUT widening ``run.json`` (whose root is a
+    closed schema, ``rf-run-export-schema.json``).
+
+    Contract:
+
+    * Card-level fields only. No extracted point, quote, or summary is ever
+      emitted here, so a registered card cannot carry evidence text into any
+      consumer by this path. Evidence only ever reaches a consumer through a
+      claim citation (:func:`_resolve_source`).
+    * Max-permissive, like ``catalog_service``'s own ``export_run`` call: no
+      redaction happens here. Each entry carries the card's own
+      ``sensitivity`` label so the caller gates it at READ time (fail-closed
+      on unknown labels, same ``SENSITIVITY_ORDER`` semantics).
+    * ``extraction_status`` is copied verbatim when it is a recognised value
+      and is ``None`` otherwise -- never derived from content or locator.
+    * Clearance: the raw card ``meta`` is mediated exactly like
+      :func:`_resolve_source` does. A stamped-and-blocked card is OMITTED
+      (fail-closed) rather than raised, so one blocked uncited card can never
+      fail the whole run's catalog import (which previously never read it).
+    * ``card_file`` (basename only, never a directory) and ``card_sha256``
+      (digest of the card file's bytes) let a reader detect that the card was
+      removed or rewritten after projection and fail the reference explicitly.
+
+    Deterministic: ordered by card file path, pure function of the files.
+    """
+
+    rp = resolve_run_paths(paths, run_id)
+    cards = _load_source_cards(rp, run_id=run_id)
+    if not cards:
+        return []
+    registry = clearance.load_registry(paths=paths)
+    registered: list[dict[str, Any]] = []
+    for sid, card in cards.items():
+        meta = card["meta"]
+        try:
+            clearance.mediate_egress(
+                _stamped_clearance_candidates(meta),
+                kind="source_attribution",
+                target_scope="redistribution",
+                target="export_registered_sources",
+                registry=registry,
+            )
+        except clearance.ClearanceDenied:
+            continue
+        src = meta.get("source") if isinstance(meta.get("source"), dict) else {}
+        locator = src.get("locator") if isinstance(src.get("locator"), dict) else {}
+        status = meta.get("extraction_status")
+        path: Path = card["path"]
+        entry: dict[str, Any] = {
+            "source_card_id": sid,
+            "card_file": path.name,
+            "card_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+            "title": src.get("title"),
+            "source_type": src.get("source_type"),
+            "url": locator.get("url"),
+            "doi": locator.get("doi"),
+            "authors": src.get("authors"),
+            "publisher": src.get("publisher"),
+            "version": src.get("version"),
+            "trust": meta.get("trust"),
+            "usage": meta.get("usage"),
+            "attribution_summary": meta.get("attribution_summary"),
+            "sensitivity": meta.get("sensitivity"),
+            "extraction_status": status if status in _REGISTERED_EXTRACTION_STATUSES else None,
+        }
+        stamp = _clearance_stamp_of(meta, None)
+        if stamp is not None:
+            entry["clearance"] = stamp
+        registered.append(entry)
+    return registered
+
+
 def _claim_provenance_lineage(
     paths: FoundryPaths | None, workspace_id: str | None, persistent_references: Mapping[str, Any] | None
 ) -> dict[str, Any] | None:
@@ -2118,6 +2204,7 @@ __all__ = [
     "derive_status",
     "derive_report_anchors",
     "export_run",
+    "export_registered_sources",
     "export_to_file",
     "export_all",
     "list_runs",
