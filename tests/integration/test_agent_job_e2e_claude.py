@@ -27,6 +27,7 @@ import pytest
 # Gate #2 NOT approved — all tests use mock credentials
 # (real API key reads and live provider network calls are NOT permitted here)
 
+from research_foundry.adapters.base import module_available
 from research_foundry.adapters.claude_agent_sdk import (
     ClaudeAgentSDKAdapter,
     MockSDKClient,
@@ -127,6 +128,11 @@ def test_adapter_degraded_without_client() -> None:
     """Adapter falls back to degraded stub when no client and SDK absent."""
     # claude_agent_sdk is not a real installable package in the test venv;
     # available() therefore returns False unless an sdk_client is injected.
+    if module_available("claude_agent_sdk"):
+        pytest.skip(
+            "precondition: claude_agent_sdk NOT installed -- this test pins the "
+            "degraded path (node_01M24QWV6W45KKDHNYFWEZTMZ7)"
+        )
     adapter = ClaudeAgentSDKAdapter()
     result = adapter.run({})
     assert result.degraded is True, (
