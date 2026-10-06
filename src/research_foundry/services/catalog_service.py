@@ -73,6 +73,7 @@ from .export_service import (
     REDACTION_MARKER,
     SENSITIVITY_ORDER,
     ExportError,
+    export_registered_sources,
     export_run,
     resolve_threshold,
 )
@@ -1238,6 +1239,113 @@ def _build_source_rows(
     return rows, source_id_to_item_id
 
 
+# Fixed verification vocabulary stamped on every uncited ("registered-only")
+# source row. Constants, never computed: this projection has no verifier, so
+# it can only ever report "nothing has been verified" -- a registered locator
+# can never read as claim support, bibliographic confirmation, or full-text
+# evidence by passing through the catalog.
+REGISTERED_SOURCE_CITATION_STATE = "uncited"
+REGISTERED_SOURCE_CLAIM_VERIFICATION = "none"
+REGISTERED_SOURCE_BIBLIOGRAPHIC_VERIFICATION = "unknown"
+REGISTERED_SOURCE_FULL_TEXT_VERIFICATION = "unknown"
+
+
+def _build_registered_source_rows(
+    registered_sources: list[dict[str, Any]],
+    run_id: str,
+    *,
+    cited_source_ids: set[str],
+    project: str | None,
+    created_at: str | None,
+    run_sensitivity_rank: int,
+) -> list[dict[str, Any]]:
+    """Project registered source cards that NO claim cites (node_01M44WQKMNDCYH3RP5NMNRZ7P6).
+
+    Claim-derived source rows (:func:`_build_source_rows`) are untouched and
+    always win: a card cited by any resolved claim is skipped here. The
+    remaining cards become ordinary ``item_type="source"`` rows (same
+    deterministic ``catalog_item_id`` rule, ``local_ref`` = the card's own
+    ``source_card_id``) whose payload:
+
+    * carries NO evidence points (``evidence_points: []``, ``source_count: 0``)
+      and no link rows -- a registered locator is never claim support;
+    * carries a ``registration`` block with the card's verbatim
+      ``extraction_status`` (``"unknown"`` when absent/unrecognised) and the
+      fixed ``REGISTERED_SOURCE_*`` verification constants above;
+    * carries ``card_file``/``card_sha256`` so a reader can fail a reference
+      explicitly once the card is removed or rewritten after projection.
+
+    Sensitivity floors to ``max(run_sensitivity_rank, card rank)`` exactly
+    like claim-derived rows; an unknown card label is fail-closed.
+    Deliberately NOT folded into ``run_content_max``/``total_sources`` for the
+    report row, so every pre-existing row of a run is byte-identical.
+    """
+
+    rows: list[dict[str, Any]] = []
+    for entry in registered_sources:
+        sid = str(entry.get("source_card_id") or "")
+        if not sid or sid in cited_source_ids:
+            continue
+        extraction_status = entry.get("extraction_status") or "unknown"
+        payload = {
+            "title": entry.get("title") or sid,
+            "source_type": entry.get("source_type"),
+            "url": entry.get("url"),
+            "authors": entry.get("authors"),
+            "doi": entry.get("doi"),
+            "publisher": entry.get("publisher"),
+            "version": entry.get("version"),
+            "trust": entry.get("trust"),
+            "usage": entry.get("usage"),
+            "attribution_summary": entry.get("attribution_summary"),
+            "evidence_points": [],
+            "clearance": entry.get("clearance"),
+            "registration": {
+                "citation_state": REGISTERED_SOURCE_CITATION_STATE,
+                "extraction_status": extraction_status,
+                "claim_verification": REGISTERED_SOURCE_CLAIM_VERIFICATION,
+                "bibliographic_verification": REGISTERED_SOURCE_BIBLIOGRAPHIC_VERIFICATION,
+                "full_text_verification": REGISTERED_SOURCE_FULL_TEXT_VERIFICATION,
+                "card_file": entry.get("card_file"),
+                "card_sha256": entry.get("card_sha256"),
+            },
+        }
+        source_type = entry.get("source_type")
+        rows.append(
+            _base_row(
+                item_type="source",
+                run_id=run_id,
+                local_ref=sid,
+                project=project,
+                title=str(payload["title"]),
+                summary=str(source_type) if source_type is not None else None,
+                status=None,
+                # Fail-closed: a missing card label ranks as UNKNOWN (stricter
+                # than every known level), unlike `_rank(None)`'s public default.
+                sensitivity_rank=max(
+                    run_sensitivity_rank,
+                    SENSITIVITY_ORDER.get(str(entry.get("sensitivity")), _UNKNOWN_RANK),
+                ),
+                trust_label=_trust_label_of(entry.get("trust")),
+                confidence=None,
+                source_count=0,
+                created_at=created_at,
+                updated_at=created_at,
+                payload=payload,
+                extra_search_text=" ".join(
+                    filter(None, [_scalar_text(entry.get("doi")), sid])
+                ),
+                doi=entry.get("doi"),
+                publisher=entry.get("publisher"),
+                source_version=entry.get("version"),
+                authors=entry.get("authors"),
+                source_rank=_source_rank_of(entry.get("trust")),
+                attribution_count=_attribution_count_of(entry.get("attribution_summary")),
+            )
+        )
+    return rows
+
+
 def _build_report_row(
     export_data: dict[str, Any],
     run_id: str,
@@ -1545,7 +1653,19 @@ def _build_catalog_rows(
         report_anchors=report_anchors,
     )
 
-    rows: list[dict[str, Any]] = [*claim_rows, *source_rows]
+    # node_01M44WQKMNDCYH3RP5NMNRZ7P6: registered-but-uncited source cards,
+    # read through the export layer (never a raw card parse here). Appended
+    # AFTER every claim-derived row so pre-existing rows are unchanged.
+    registered_source_rows = _build_registered_source_rows(
+        export_registered_sources(paths, run_id),
+        run_id,
+        cited_source_ids=set(source_id_to_item_id),
+        project=project,
+        created_at=created_at,
+        run_sensitivity_rank=run_sensitivity_rank,
+    )
+
+    rows: list[dict[str, Any]] = [*claim_rows, *source_rows, *registered_source_rows]
     if report_row is not None:
         rows.append(report_row)
     rows.extend(reusable_output_rows)
