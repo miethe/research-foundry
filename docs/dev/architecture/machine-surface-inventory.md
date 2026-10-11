@@ -82,13 +82,15 @@ table lists all 7 — it supersedes the implementation-plan task table's stale c
 - [x] Contract drift tests assert presence/value on all 7 surfaces (TASK-1.4; row 4's generator
       closed by the TASK-1.5 fix cycle) — see `tests/test_contract_drift_rf_schema_version.py`: unit
       tests on the shared `_stamp()`/`stamp()` helpers (with a monkeypatch proving divergence is
-      actually caught), a structural scan of every `_json.dumps(` call site in `cli_commands.py` (31
+      actually caught), a structural scan of every `_json.dumps(` call site in `cli_commands.py` (33
       stamped / 6 array-root exclusions / 5 unrelated field-echo sites / 1 internal-state exclusion —
       all accounted for; updated from 26/2/2 by the rights-entity-model-v1 fix cycle's `rf rights`
       command group, then from 27/5/4 by itt-burndown-0926's re-measurement (node_01M3FKQYK8CPRBVS99B067TXNH),
       which caught `rf attribution validate` (array-root), `assertion_backfill`'s incidental
       field-echo match, four more `_stamp()`-routed sites added since, and the previously-uncounted
-      workspace-migrate linkage-file write, see row 2), a
+      workspace-migrate linkage-file write, see row 2; then 31 -> 33 by ica-burndown-1004
+      (node_01M24QWV6W45KKDHNYFWEZTMZ7) stamping the `rf run set-visibility`/`set-workspace`
+      repair verbs), a
       live `export_run()` presence+value smoke test, and live CLI/`verify`/API presence+value smoke
       tests.
 - [x] Before/after key-diff on a fixture run shows zero renamed/removed keys (TASK-1.4; row 4's
