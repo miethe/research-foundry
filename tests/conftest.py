@@ -8,6 +8,15 @@ service test should use it and pass ``paths=tmp_foundry`` to services.
 
 from __future__ import annotations
 
+import os
+
+# Ambient-terminal isolation (node_01M24QWV6W45KKDHNYFWEZTMZ7): an operator
+# shell exporting FORCE_COLOR (iTerm profiles commonly set FORCE_COLOR=3) makes
+# rich/typer emit ANSI escapes into CliRunner output even though it is not a
+# TTY, so substring assertions on CLI text/JSON fail only on that machine.
+# Drop it before any research_foundry module builds a rich Console.
+os.environ.pop("FORCE_COLOR", None)
+
 import shutil
 from datetime import UTC, datetime
 from pathlib import Path
