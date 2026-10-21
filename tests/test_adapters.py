@@ -47,12 +47,18 @@ def test_load_all_registers_all_five_by_id():
 
 
 @pytest.mark.parametrize("adapter_id", sorted(_EXPECTED_IDS))
-def test_each_adapter_unavailable_and_degrades(adapter_id):
+def test_each_adapter_unavailable_and_degrades(adapter_id, monkeypatch):
     load_all()
     adapter = get_adapter(adapter_id)
     assert adapter is not None
     _skip_if_optional_dep_installed(adapter)
-    # Optional deps absent + no opencode binary -> not available in this env.
+    if adapter_id == "opencode":
+        # Pin only this test's availability precondition; runner PATH contents
+        # vary, while OpenCode's unavailable-mode behavior should not.
+        from research_foundry.adapters import opencode
+
+        monkeypatch.setattr(opencode.shutil, "which", lambda binary: None)
+    # Optional deps absent + (for opencode) an isolated unavailable check.
     assert adapter.available() is False
     result = adapter.run({})
     assert isinstance(result, AdapterResult)
