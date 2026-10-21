@@ -398,9 +398,9 @@ def test_cli_json_dumps_sites_fully_accounted_for():
 
 
 def test_cli_json_dumps_site_counts_match_pinned_baseline():
-    """Pinned to the current machine-surface-inventory.md count (31 stamped
+    """Pinned to the current machine-surface-inventory.md count (33 stamped
     dict-root sites, 6 documented array-root exclusions, 5 unrelated
-    single-field echo helpers, 1 internal-state exclusion = 43 total). Update
+    single-field echo helpers, 1 internal-state exclusion = 45 total). Update
     this test's numbers alongside the inventory doc when CLI --json surfaces
     are deliberately added/removed — a silent count change here is itself a
     drift signal.
@@ -426,11 +426,16 @@ def test_cli_json_dumps_site_counts_match_pinned_baseline():
     (`_write_workspace_run_link`, added 2026-07-30) was never a `--json`
     output surface at all (it writes an internal disk-only linkage file) and
     had been silently unclassified since; it now carries the internal-state
-    exclusion marker this test's classifier recognizes (0 -> 1)."""
+    exclusion marker this test's classifier recognizes (0 -> 1).
+
+    ica-burndown-1004 (node_01M24QWV6W45KKDHNYFWEZTMZ7): the `rf run
+    set-visibility` / `rf run set-workspace` repair verbs (#49) emitted
+    dict-rooted JSON without `_stamp()` and tripped the unclassified guard;
+    both now route through `_stamp()` (31 -> 33)."""
 
     source = CLI_COMMANDS_PATH.read_text()
     result = _classify_cli_json_dumps_sites(source)
-    assert len(result["stamped"]) == 31
+    assert len(result["stamped"]) == 33
     assert len(result["array_excluded"]) == 6
     assert len(result["field_echo"]) == 5
     assert len(result["internal_state"]) == 1

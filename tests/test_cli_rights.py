@@ -43,7 +43,12 @@ def _invoke(args: list[str], cwd: Path):
     prev = Path.cwd()
     os.chdir(cwd)
     try:
-        return runner.invoke(app, args)
+        return runner.invoke(
+            app,
+            args,
+            env={"NO_COLOR": "1"},
+            color=False,
+        )
     finally:
         os.chdir(prev)
 
@@ -148,13 +153,17 @@ def test_rights_validate_surfaces_divergence_and_exits_nonzero(tmp_foundry: Foun
     card_path = _write_source_card(tmp_foundry, "src_cli_divergence_001", summary)
 
     out = _invoke(
-        ["rights", "validate", "--as-of", "2026-07-21", str(card_path)],
+        ["rights", "validate", "--as-of", "2026-07-21", "--json", str(card_path)],
         tmp_foundry.root,
     )
 
     assert out.exit_code == 1, out.output
-    assert "FAIL" in out.output
-    assert "src_cli_divergence_001" in out.output
+    import json
+
+    payload = json.loads(out.output)
+    assert len(payload) == 1
+    assert "src_cli_divergence_001" in payload[0]["path"]
+    assert payload[0]["findings"]
 
 
 def test_rights_validate_surfaces_divergence_json(tmp_foundry: FoundryPaths) -> None:
@@ -250,14 +259,16 @@ def test_rights_inspect_prints_full_posture_for_known_id(tmp_foundry: FoundryPat
         records_dir / "rr_inspect_001.yaml",
     )
 
-    out = _invoke(["rights", "inspect", "src_inspect_001"], tmp_foundry.root)
+    out = _invoke(["rights", "inspect", "src_inspect_001", "--json"], tmp_foundry.root)
 
     assert out.exit_code == 0, out.output
-    assert "rights_summary.access_basis" in out.output
-    assert "public_web" in out.output
-    assert "substitutability.status" in out.output
-    assert "no_substitute_found" in out.output
-    assert "synthesis.record_scope" in out.output
+    import json
+
+    payload = json.loads(out.output)
+    assert payload["id"] == "src_inspect_001"
+    assert payload["rights_summary"]["access_basis"] == "public_web"
+    assert payload["substitutability"]["status"] == "no_substitute_found"
+    assert payload["linked_rights_record"]["record_scope"] == "source"
 
 
 def test_rights_inspect_json_output(tmp_foundry: FoundryPaths) -> None:

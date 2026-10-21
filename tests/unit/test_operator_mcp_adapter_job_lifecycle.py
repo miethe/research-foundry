@@ -748,6 +748,10 @@ def test_job_resume_wrong_workspace_indistinguishable_from_missing_dry_run(
 ) -> None:
     op_service = OperatorOperationService(tmp_foundry)
     real_operation_id = _target_operation_id(tmp_foundry, op_service)
+    # `occurred_at` is intentionally generated per response. Freeze it for
+    # this comparison so the test checks denial equivalence rather than clock
+    # resolution (which differs across Python/platform versions).
+    now = ids.now()
 
     monkeypatch.setattr(policy, "resolve_operator_identity", lambda *a, **kw: _IDENTITY_OTHER_WORKSPACE)
 
@@ -758,6 +762,7 @@ def test_job_resume_wrong_workspace_indistinguishable_from_missing_dry_run(
         presented_token=None,
         dry_run=True,
         paths=tmp_foundry,
+        now=now,
     )
     missing_result = job_lifecycle.invoke_resume(
         operation_id="op_does_not_exist_at_all",
@@ -766,6 +771,7 @@ def test_job_resume_wrong_workspace_indistinguishable_from_missing_dry_run(
         presented_token=None,
         dry_run=True,
         paths=tmp_foundry,
+        now=now,
     )
 
     assert wrong_workspace_result.ok is False
