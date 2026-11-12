@@ -27,6 +27,9 @@ import os
 from pathlib import Path
 from typing import Any
 
+import pytest
+from click import unstyle
+from typer import rich_utils
 from typer.testing import CliRunner
 
 from research_foundry.cli import app
@@ -118,12 +121,19 @@ def _write_corpus_source_card(
 # --- (a) --as-of is required -----------------------------------------------
 
 
-def test_rights_validate_requires_as_of(tmp_foundry: FoundryPaths) -> None:
+@pytest.mark.parametrize("color_system", [None, "standard"])
+def test_rights_validate_requires_as_of(
+    tmp_foundry: FoundryPaths, monkeypatch: pytest.MonkeyPatch, color_system: str | None
+) -> None:
+    # Typer forces terminal rendering on GitHub Actions; ANSI styling can
+    # split an option name even with NO_COLOR and CliRunner(color=False).
+    monkeypatch.setattr(rich_utils, "FORCE_TERMINAL", True)
+    monkeypatch.setattr(rich_utils, "COLOR_SYSTEM", color_system)
     out = _invoke(["rights", "validate"], tmp_foundry.root)
 
     assert out.exit_code != 0, out.output
     assert out.exit_code == 2, out.output  # Click/Typer's own missing-option exit code
-    assert "--as-of" in out.output
+    assert "--as-of" in unstyle(out.output)
 
 
 # --- (b) empty corpus --------------------------------------------------------
