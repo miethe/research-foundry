@@ -29,6 +29,25 @@ canonical claim ledger.
   superseded assertion cannot be reused. Historical evidence remains available
   only through its authorized run context.
 
+## Normal swarm runs
+
+With `foundry.assertion_ledger.ledger_write_enabled: true`, `rf swarm drive`
+records source editions and quote passages during intake, then uses the shared
+strict materializer after claim mapping. Eligible claims receive
+`persistent_references.source_assertion_id`; unsupported or ambiguous evidence
+abstains under the existing passage, rights, and provenance controls. The
+planner's workspace follows the run through intake and materialization; local
+CLI plans use `default`.
+
+The run records its outcome in `writebacks/assertion_materialization.yaml`.
+Materialization errors are logged by exception type and recorded in that
+receipt and the drive's notes; synthesis, verification, and bundling continue.
+Retries use the materializer's existing idempotent publication behavior.
+Disabling ledger writes skips edition and assertion production. Existing
+report-verification receipts remain independent. `automated_reuse_enabled` and
+`canonical_claims_enabled` independently control their respective capabilities;
+neither is required to produce source assertions.
+
 ## Review and correction
 
 Review source-bound evidence before relying on it. Correcting evidence creates
@@ -48,9 +67,9 @@ authorize those actions and observe any pilot health window.
 
 **Note on this deployment:** this codebase's default-off controls are code-level
 defaults, not this deployment's current state. This single-operator
-deployment's `foundry.yaml` deliberately sets all three
-`assertion_ledger.*_enabled` keys to `true` as an intentional, reversible local
-opt-in — set any or all of them back to `false` to return to the code default.
+deployment's `foundry.yaml` enables ledger writes and automated reuse while
+leaving canonical claims disabled. Set an enabled control back to `false` to
+return that capability to the code default.
 
 For local operator recovery and aggregate-only readiness receipts, see the
 [assertion-ledger readiness runbook](../dev/architecture/runbooks/assertion-ledger-readiness.md).
