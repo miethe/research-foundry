@@ -38,6 +38,7 @@ artifact and a re-run of a completed run is a pure no-op (FR-3).
 from __future__ import annotations
 
 import hashlib
+import logging
 import re
 import time
 from collections.abc import Callable, Mapping
@@ -51,6 +52,9 @@ from ..ids import now_iso
 from ..paths import FoundryPaths, RunPaths, distribution_root
 from ..yamlio import dump_yaml, load_yaml
 from . import governance, telemetry
+from .assertion_workspace import resolve_or_deny
+
+logger = logging.getLogger(__name__)
 
 # The fixed roster the planner emits (planning.py:_AGENT_SPECS, spec §6.7). The
 # driver pins to this *role set*; it never binds to the advisory ``tool:`` ids.
@@ -464,6 +468,7 @@ class DriveContext:
     required_outputs: tuple[str, ...]
     # swarm_plan.budget ceilings enforced by _BudgetGuard (SCHED-002 / FR-11).
     budget: Mapping[str, Any] = field(default_factory=dict)
+    assertion_registry_workspace_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -697,6 +702,55 @@ def drive_run(
             build_claim_ledger(ctx.run_id, paths=paths)
             steps_run.append("claim_map")
             receipts.append(_stage_receipt("claim_map", _started, rp.claim_ledger))
+
+        # Materialize from the same editions/passages captured by normal intake.
+        # Successful receipts resume as a no-op; failed attempts remain retryable.
+        receipt_path = rp.writebacks / "assertion_materialization.yaml"
+        previous_materialization = _safe_load_mapping(receipt_path)
+        if config.assertion_ledger_capabilities().ledger_write_allowed:
+            resolution = resolve_or_deny(ctx.assertion_registry_workspace_id)
+            materialization_inputs = {
+                "workspace_id": resolution.workspace_id,
+                "sources_digest": _digest_artifact(rp.sources),
+                "extractions_digest": _digest_artifact(rp.extractions),
+            }
+            if (
+                previous_materialization.get("status") in {"materialized", "reused", "abstained"}
+                and previous_materialization.get("inputs") == materialization_inputs
+                and "claim_map" not in steps_run
+            ):
+                steps_skipped.append("assertion_materialization")
+            elif resolution.allowed:
+                _started = now_iso()
+                try:
+                    from .assertion_materialization import AssertionMaterializer
+
+                    assert resolution.workspace_id is not None
+                    result = AssertionMaterializer(
+                        workspace_id=resolution.workspace_id, paths=paths
+                    ).materialize_run(ctx.run_id)
+                    outcome = {
+                        "run_id": ctx.run_id,
+                        "status": result.status,
+                        "materialized_count": len(result.assertion_ids),
+                        "assertion_ids": list(result.assertion_ids),
+                        "abstention_code": result.abstention_code,
+                        "abstained_claims": [
+                            {"claim_id": item.claim_id, "code": item.code}
+                            for item in result.abstained_claims
+                        ],
+                    }
+                except Exception as exc:  # noqa: BLE001 — never abort the run
+                    # Exception text can carry sensitive source content. Record
+                    # only its type, through the normal redacting write seam.
+                    error_type = type(exc).__name__
+                    logger.warning("Assertion materialization failed (%s)", error_type)
+                    notes.append(f"assertion_materialization failed: {error_type}")
+                    outcome = {"run_id": ctx.run_id, "status": "error", "error_type": error_type}
+                outcome["inputs"] = materialization_inputs
+                _redacted_dump(outcome, receipt_path, config=config)
+                steps_run.append("assertion_materialization")
+                receipts.append(_stage_receipt("assertion_materialization", _started, receipt_path))
 
         # --- milestone: sources_ingested ----------------------------------------
         if _push(ctx.run_id, _MILESTONE_INGESTED, paths=paths):
@@ -1250,6 +1304,12 @@ def _resolve_context(
 
     return DriveContext(
         run_id=run_id,
+        # plan_run stamps authenticated identity.workspace_id, or "default"
+        # for the CLI. Only pre-stamp legacy runs use that CLI convention;
+        # explicit absent/blank context stays denied rather than broadening it.
+        assertion_registry_workspace_id=resolve_or_deny(
+            run_meta.get("workspace_id", "default")
+        ).workspace_id,
         run_dir=rp.run,
         sensitivity=sensitivity,
         llm_legs=llm_legs,
@@ -1523,6 +1583,7 @@ def _ingest(
         tool_input = {
             "locator": str(locator),
             "run_id": ctx.run_id,
+            "assertion_registry_workspace_id": ctx.assertion_registry_workspace_id,
             "source_type": str(cand.get("source_type") or "other"),
         }
         title = cand.get("title")
@@ -1553,7 +1614,7 @@ def _build_job(ctx: DriveContext) -> Any:
     return AgentJob(
         agent_job_id=f"swarm_drive:{ctx.run_id}",
         project_id="swarm_drive",
-        workspace_id=None,
+        workspace_id=ctx.assertion_registry_workspace_id,
         created_by="agent:swarm_drive",
         provider="deterministic",
         model_profile=ctx.model_profiles.get("source_carder", "rf_extract_cheap"),

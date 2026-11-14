@@ -321,6 +321,156 @@ def test_fixture_run_reaches_bundle_written(tmp_foundry, tmp_path):
     assert state.bundle_path == rp.evidence_bundle
 
 
+def _normal_local_run(paths, tmp_path, *, workspace_id="default", enabled=True):
+    config = load_yaml(paths.foundry_yaml)
+    config.setdefault("foundry", {})["assertion_ledger"] = {
+        "ledger_write_enabled": enabled,
+        "automated_reuse_enabled": False,
+        "canonical_claims_enabled": False,
+    }
+    dump_yaml(config, paths.foundry_yaml)
+    _write_intent(paths)
+    run_id = planning.plan_run(
+        _INTENT_ID, profile="personal", paths=paths, workspace_id=workspace_id
+    ).run_id
+    document = tmp_path / "normal-source.txt"
+    document.write_text("Latency dropped 30% with the new router.\n", encoding="utf-8")
+    dump_yaml(
+        {"source_candidates": [{"locator": str(document), "title": "Router evidence"}]},
+        paths.run_paths(run_id).source_candidates,
+    )
+    return run_id
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_normal_intake_produces_strict_assertions_only_when_enabled(
+    tmp_foundry, tmp_path, enabled, monkeypatch
+):
+    run_id = _normal_local_run(tmp_foundry, tmp_path, enabled=enabled)
+    if not enabled:
+        from research_foundry.services.assertion_materialization import AssertionMaterializer
+        from research_foundry.services.assertion_registry import AssertionRegistry
+
+        def forbidden(*args, **kwargs):
+            pytest.fail("disabled ledger must not call registry/materializer writers")
+
+        monkeypatch.setattr(AssertionRegistry, "ingest", forbidden)
+        monkeypatch.setattr(AssertionMaterializer, "materialize_run", forbidden)
+    state = drive_run(run_id, paths=tmp_foundry, providers={}, writeback=False)
+    assert state.status_derived == "bundle_written"
+    claims = load_yaml(tmp_foundry.run_paths(run_id).claim_ledger)["claims"]
+    assert claims
+    references = [c.get("persistent_references", {}).get("source_assertion_id") for c in claims]
+    root = tmp_foundry.root / "assertion_ledger" / "workspaces"
+    assertions = list(root.glob("*/assertions/*.yaml"))
+    editions = list(root.glob("*/sources/*/editions/*.yaml"))
+    if enabled:
+        assert any(references)
+        assert assertions and editions
+        assert (
+            load_yaml(tmp_foundry.run_paths(run_id).writebacks / "assertion_materialization.yaml")[
+                "materialized_count"
+            ]
+            > 0
+        )
+    else:
+        assert not any(references)
+        # No registry/materializer content, independent of report verification.
+        assert not assertions and not editions
+        assert not list(root.glob("*/materializations/**/*"))
+        assert not (
+            tmp_foundry.run_paths(run_id).writebacks / "assertion_materialization.yaml"
+        ).exists()
+
+
+def test_normal_materialization_error_is_recorded_and_run_continues(
+    tmp_foundry, tmp_path, monkeypatch, caplog
+):
+    from research_foundry.services.assertion_materialization import AssertionMaterializer
+
+    run_id = _normal_local_run(tmp_foundry, tmp_path)
+    materialize = AssertionMaterializer.materialize_run
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("untrusted source payload should not be recorded")
+
+    monkeypatch.setattr(AssertionMaterializer, "materialize_run", fail)
+    state = drive_run(run_id, paths=tmp_foundry, providers={}, writeback=False)
+    assert state.status_derived == "bundle_written"
+    receipt_path = tmp_foundry.run_paths(run_id).writebacks / "assertion_materialization.yaml"
+    assert load_yaml(receipt_path)["error_type"] == "RuntimeError"
+    assert load_yaml(receipt_path)["status"] == "error"
+    assert any("assertion_materialization failed" in note for note in state.notes)
+    assert "Assertion materialization failed (RuntimeError)" in caplog.text
+    assert "untrusted source payload" not in receipt_path.read_text() + caplog.text
+    monkeypatch.setattr(AssertionMaterializer, "materialize_run", materialize)
+    retried = drive_run(run_id, paths=tmp_foundry, providers={}, writeback=False)
+    assert retried.status_derived == "bundle_written"
+    assert load_yaml(receipt_path)["materialized_count"] > 0
+
+
+def test_normal_materialization_uses_planned_workspace(tmp_foundry, tmp_path):
+    from research_foundry.services.assertion_registry import AssertionRegistry
+
+    run_id = _normal_local_run(tmp_foundry, tmp_path, workspace_id="research-team")
+    state = drive_run(run_id, paths=tmp_foundry, providers={}, writeback=False)
+    assert state.status_derived == "bundle_written"
+    owned = AssertionRegistry(workspace_id="research-team", paths=tmp_foundry).root
+    default = AssertionRegistry(workspace_id="default", paths=tmp_foundry).root
+    assert list(owned.glob("assertions/*.yaml"))
+    assert not default.exists()
+
+
+@pytest.mark.parametrize("workspace_id", ["research-team", None])
+def test_source_card_tool_cannot_override_job_workspace(tmp_foundry, tmp_path, workspace_id):
+    from dataclasses import replace
+
+    from research_foundry.services.agent_job_service import AgentJobService
+    from research_foundry.services.assertion_registry import AssertionRegistry
+
+    run_id = _normal_local_run(tmp_foundry, tmp_path)
+    service = AgentJobService(paths=tmp_foundry)
+    job = service.create_job(
+        "deterministic",
+        "rf_extract_cheap",
+        "research",
+        {"allowed_tools": ["source_card"]},
+        workspace_id=workspace_id,
+    )
+    job = replace(job, workspace_id=workspace_id)
+    result = service.run_job_tool(
+        "source_card",
+        {
+            "run_id": run_id,
+            "locator": str(tmp_path / "normal-source.txt"),
+            "assertion_registry_workspace_id": "other-team",
+        },
+        job,
+        paths=tmp_foundry,
+    )
+    assert result["status"] == "ok"
+    assert not AssertionRegistry(workspace_id="other-team", paths=tmp_foundry).root.exists()
+    root = tmp_foundry.root / "assertion_ledger" / "workspaces"
+    if workspace_id:
+        assert AssertionRegistry(workspace_id=workspace_id, paths=tmp_foundry).root.exists()
+    else:
+        assert not list(root.rglob("*"))
+
+
+@pytest.mark.parametrize("workspace_id", [None, "", "   "])
+def test_explicit_missing_run_workspace_denies_ledger_writes(tmp_foundry, tmp_path, workspace_id):
+    run_id = _normal_local_run(tmp_foundry, tmp_path)
+    rp = tmp_foundry.run_paths(run_id)
+    metadata = load_yaml(rp.run_yaml)
+    metadata["workspace_id"] = workspace_id
+    dump_yaml(metadata, rp.run_yaml)
+    state = drive_run(run_id, paths=tmp_foundry, providers={}, writeback=False)
+    assert state.status_derived == "bundle_written"
+    root = tmp_foundry.root / "assertion_ledger" / "workspaces"
+    assert not list(root.glob("*/assertions/*.yaml"))
+    assert not list(root.glob("*/sources/*/editions/*.yaml"))
+
+
 def test_telemetry_push_failure_never_blocks(tmp_foundry, tmp_path, monkeypatch):
     run_id = _planned_run(tmp_foundry)
     _seed_evidence(tmp_foundry, run_id, tmp_path)
