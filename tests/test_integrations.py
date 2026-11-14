@@ -6,6 +6,7 @@ All HTTP calls are monkeypatched; no real network requests are made.
 from __future__ import annotations
 
 import json
+import re
 import urllib.error
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -370,8 +371,11 @@ class TestDoctorIntegrationsLine:
             result = runner.invoke(app, ["doctor"])
 
         assert result.exit_code == 0
-        assert "arc reachable" in result.output
-        assert "intenttree reachable" in result.output
+        normalized_output = " ".join(
+            re.sub(r"[^a-zA-Z0-9]+", " ", result.output).split()
+        ).lower()
+        assert "arc reachable" in normalized_output
+        assert "intenttree reachable" in normalized_output
 
 
 # ===========================================================================

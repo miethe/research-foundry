@@ -1,0 +1,43 @@
+name: Tests
+
+# Runs the full pytest suite on every push/PR so pre-existing failures cannot
+# silently re-accumulate (node_01M24QWV6W45KKDHNYFWEZTMZ7). "Suite green" is the
+# landing gate; a test that legitimately needs an absent precondition must
+# skip/xfail with a reason naming that precondition, never fail.
+
+on:
+  push:
+    branches: [main, development]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pytest:
+    name: pytest (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install distribution into .venv
+        run: uv sync --extra dev --extra serve --extra mcp --extra pdf
+
+      - name: Run test suite
+        run: uv run --no-sync python -m pytest -q -rfE

@@ -1622,7 +1622,9 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
         except svc.RunAdminError as exc:
             _fail(exc)
         console.print(f"[green]visibility set[/green] {run_id} -> {value}")
-        typer.echo(_json.dumps({"run_id": run_id, "visibility": data.get("visibility")}, ensure_ascii=False))
+        typer.echo(
+            _json.dumps(_stamp({"run_id": run_id, "visibility": data.get("visibility")}), ensure_ascii=False)
+        )
 
     @run_app.command("set-workspace")
     def run_set_workspace(
@@ -1648,7 +1650,11 @@ def register(app: typer.Typer) -> None:  # noqa: C901 - flat command wiring
         except svc.RunAdminError as exc:
             _fail(exc)
         console.print(f"[green]workspace_id set[/green] {run_id} -> {workspace_id}")
-        typer.echo(_json.dumps({"run_id": run_id, "workspace_id": data.get("workspace_id")}, ensure_ascii=False))
+        typer.echo(
+            _json.dumps(
+                _stamp({"run_id": run_id, "workspace_id": data.get("workspace_id")}), ensure_ascii=False
+            )
+        )
 
     app.add_typer(run_app, name="run")
 

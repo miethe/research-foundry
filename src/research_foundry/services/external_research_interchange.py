@@ -1770,8 +1770,10 @@ class ExternalResearchInterchange:
         changes hands, whether via a fresh acquire or a stale reclaim).
         Release verifies this process's own acquisition is STILL the file at
         ``lease_path`` by comparing ``(st_dev, st_ino)`` captured at
-        acquisition time against a fresh ``stat`` immediately before
-        unlinking — a lease this process lost to a stale-reclaim (see
+        acquisition time against a fresh ``stat`` and checking the exact
+        owner payload immediately before unlinking. The payload check also
+        fences filesystems that reuse an inode after unlink — a lease this
+        process lost to a stale-reclaim (see
         ``_reclaim_stale_lease``) is never unlinked out from under its new,
         legitimate owner. ``_execute`` heartbeats (touches) this same lease
         file after every per-action effect publish so a legitimately
@@ -1788,11 +1790,13 @@ class ExternalResearchInterchange:
         generation = 0
         acquired = False
         acquired_stat: os.stat_result | None = None
+        acquired_payload: bytes | None = None
         while not acquired:
             try:
                 fd = os.open(lease_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
                 try:
-                    os.write(fd, f"{owner_token}:{generation}:{os.getpid()}:{now_iso()}\n".encode())
+                    acquired_payload = f"{owner_token}:{generation}:{os.getpid()}:{now_iso()}\n".encode()
+                    os.write(fd, acquired_payload)
                     os.fsync(fd)
                     acquired_stat = os.fstat(fd)
                 finally:
@@ -1809,13 +1813,15 @@ class ExternalResearchInterchange:
                     ) from None
                 time.sleep(_LEASE_POLL_INTERVAL_SECONDS)
         assert acquired_stat is not None
+        assert acquired_payload is not None
         try:
             yield
         finally:
             with suppress(FileNotFoundError):
                 current = os.stat(lease_path)
                 if (current.st_dev, current.st_ino) == (acquired_stat.st_dev, acquired_stat.st_ino):
-                    lease_path.unlink()
+                    if lease_path.read_bytes() == acquired_payload:
+                        lease_path.unlink()
                 # else: this lease was reclaimed out from under us (we
                 # failed to heartbeat in time); the file now belongs to a
                 # new legitimate owner -- never unlink someone else's lease.

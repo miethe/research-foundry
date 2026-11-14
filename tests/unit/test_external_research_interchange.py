@@ -1236,9 +1236,8 @@ def test_lease_release_never_deletes_a_reclaimed_replacement(workspace: FoundryP
     """If this process's lease is reclaimed (simulating a heartbeat that
     arrived too late) and a NEW owner acquires a fresh lease at the same
     path, this process's own `_receipt_lease` `finally` block must not
-    delete that new owner's lease merely because the path matches -- it
-    must recognize (via inode) that the file is no longer the one it
-    created."""
+    delete that new owner's lease even if the filesystem reuses the
+    original lease's inode; release must recognize its owner payload."""
 
     interchange = _interchange(workspace)
     receipt_digest = "b" * 64
@@ -1249,13 +1248,13 @@ def test_lease_release_never_deletes_a_reclaimed_replacement(workspace: FoundryP
         # acquired a fresh lease at the same path while we were "still
         # working" (no heartbeat arrived in time).
         lease_path.unlink()
-        lease_path.write_text("new-owner:0:99999:2026-01-01T00:00:00Z\n", encoding="utf-8")
-        new_owner_inode = lease_path.stat().st_ino
+        replacement_payload = "new-owner:0:99999:2026-01-01T00:00:00Z\n"
+        lease_path.write_text(replacement_payload, encoding="utf-8")
 
     # Our `_receipt_lease` context manager's exit must NOT have deleted the
     # new owner's lease file.
     assert lease_path.exists()
-    assert lease_path.stat().st_ino == new_owner_inode
+    assert lease_path.read_text(encoding="utf-8") == replacement_payload
 
 
 def test_reclaim_stale_lease_only_one_concurrent_reclaimer_wins(workspace: FoundryPaths) -> None:

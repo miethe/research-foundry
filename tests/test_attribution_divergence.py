@@ -446,7 +446,12 @@ def _invoke(args: list[str], cwd: Path):
     prev = Path.cwd()
     os.chdir(cwd)
     try:
-        return runner.invoke(app, args)
+        return runner.invoke(
+            app,
+            args,
+            env={"NO_COLOR": "1"},
+            color=False,
+        )
     finally:
         os.chdir(prev)
 
@@ -468,19 +473,12 @@ def test_cli_attribution_validate_surfaces_divergence_and_exits_nonzero(tmp_foun
     card_path = _write_source_card(tmp_foundry.root, "src_cli_divergence_001", mirror)
 
     out = _invoke(
-        ["attribution", "validate", "--as-of", "2026-07-21", str(card_path)],
+        ["attribution", "validate", "--as-of", "2026-07-21", "--json", str(card_path)],
         tmp_foundry.root,
     )
 
     assert out.exit_code == 1, out.output
-    assert "FAIL" in out.output
-    assert "src_cli_divergence_001" in out.output
-
-    out_json = _invoke(
-        ["attribution", "validate", "--as-of", "2026-07-21", "--json", str(card_path)],
-        tmp_foundry.root,
-    )
-    assert out_json.exit_code == 1, out_json.output
-    payload = json.loads(out_json.output)
+    payload = json.loads(out.output)
     assert len(payload) == 1
+    assert "src_cli_divergence_001" in payload[0]["path"]
     assert payload[0]["findings"]

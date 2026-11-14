@@ -684,7 +684,13 @@ class AgentJobService:
                     tool_input, config=self._config
                 )
                 # Merge service-level paths; our paths wins.
-                merged: dict[str, Any] = {**redacted_input, "paths": paths}
+                merged: dict[str, Any] = {
+                    **redacted_input,
+                    "paths": paths,
+                    # Tool arguments are untrusted: the accepted job owns the
+                    # workspace, including an absent context (fail closed).
+                    "assertion_registry_workspace_id": job.workspace_id,
+                }
                 ingest_result = create_source_card(**merged)
                 output = {
                     "source_card_id": ingest_result.source_card_id,

@@ -9,10 +9,10 @@ description: >-
 status: draft
 maturity: shaping
 created: 2026-07-26
-updated: 2026-07-26
+updated: 2026-11-13
 feature_slug: research-foundry-public-knowledge-platform
 feature_version: v1
-owner: nick
+owner: project owner
 priority: high
 risk_level: high
 truth_status: partially_verified
@@ -58,6 +58,8 @@ related_documents:
 
 ## 1. Purpose and decision posture
 
+> For first-release scope, this framing is superseded by [owner intent](#owner-intent-2026-11-13-governs-first-release-scope).
+
 This document is the product-direction authority for a possible public Research
 Foundry knowledge platform. It is self-contained enough for an external agent
 without repository access to understand the product, its ontology, its current
@@ -75,6 +77,33 @@ The proposal is a **conditional go** for a bounded public program:
 It is **not** approval for unrestricted public model execution, adversarial
 shared-store multi-tenancy, open contribution, public promotion of private
 evidence, clinical use, or “all research” scale.
+
+## Owner intent, 2026-11-13 (governs first-release scope)
+
+The owner approved the following first-release direction. Decision record: node_01KZ755YBS3A99PVJBC53R4DTY.
+
+1. The public instance starts with an open claims library connected to a sources library for agents to read and cite. Inferences and reports may follow.
+2. The first release presents existing sources with provenance in an agent-usable format; it does not create new research or grade sources.
+3. Reading is open to all, including direct access, and agents can retrieve the available information.
+4. Contributors use an open toolkit with their own models; hosted processing is a possible later service.
+5. Records identify each model's contribution and capture the process behind it.
+6. A minimal entry check verifies that each quoted claim appears verbatim in its source; additional assessments are visible labels.
+7. Claim quotations should be visible where permitted even when the full source cannot be published.
+8. Seed a small mix of agent-tools and software-engineering sources and research-methods sources through the strict path.
+9. An outside agent using the library during a task is the primary success milestone; outside contributions are another milestone.
+10. Later possibilities include independently corroborated claim scores, proposed edits, chained inferences, citation links and sharing among libraries.
+
+### First-release decisions
+
+- Research flows through the toolkit while direct open access remains available.
+- A common rights floor limits claim quotes and total quotation per source, with source-license exceptions. Owner-arranged legal review remains an open launch prerequisite.
+- The initial domains are agent tools and software engineering, alongside research methods.
+- The public and local instances remain separate initially. Later, users may connect a local instance to the public library, retain a private local library, and connect to other libraries.
+- Compare models on seed sources, then publish pass rates by declared model.
+
+### What this supersedes
+
+For first-release scope, the review-gated showcase for human readers is superseded. Reviewer quorum and promotion move to the later stage when net-new findings start (D3). D2 source rights, D5 separate deployment, and D8 no hosted runs survive. D7 “bring your own key” becomes “bring your own model through the toolkit.”
 
 ## 2. Authority and conflict rules
 
@@ -167,6 +196,8 @@ reviewed assertion capital and its history, not the UI, a single model, or a
 one-time report.
 
 ## 5. Actors and jobs to be done
+
+> For first-release scope, this framing is superseded by [owner intent](#owner-intent-2026-11-13-governs-first-release-scope).
 
 | Actor | Job to be done | Current or target |
 | --- | --- | --- |
@@ -298,7 +329,33 @@ The platform must remain useful in assertion-only mode.
 
 These labels must not be collapsed into “public-ready.”
 
+### Current truth for the intent
+
+- The strict quote-anchored assertion layer exists, with a model-free check and content-derived IDs. Default run claims are loose summaries; process capture is thin. (decision record: node_01KZ755YBS3A99PVJBC53R4DTY)
+- The live library has 0 strict assertions; about 5% of sources have stored bytes. Of 750 source cards, 687 are marked personal. The owner expects that label is a default, but it needs validation. (decision record: node_01KZ755YBS3A99PVJBC53R4DTY)
+- There is no run-less single-source ingest, signing, or portable packet; local MCP assertion read denies. (decision record: node_01KZ755YBS3A99PVJBC53R4DTY)
+
+### Re-grounded 2026-11-13
+
+The [re-grounding checklist](public-knowledge-platform-regrounding-checklist-2026-11-13.md)
+checks the baseline and §15.1 against this checkout and the shipped activation record.
+Across its 26 rows, 12 are verified, 7 changed, 0 absent, and 7 unmeasured.
+These verdicts describe the inspected repository surface, not a deployed instance.
+
+Multi-user activation and DF-004 shipped. Public visibility permits authenticated
+cross-workspace reads; configured authentication does not make those reads anonymous.
+The DI-1 delta remains pending, and catalog import and core statistics retain unscoped
+seams. A stranger-safe public projection is not established: export returns report
+drafts directly, while source text has redaction.
+
+Provider adapters, budget fields, and request rate limits exist; the default production
+job spawn fails closed without its SDK runner, and durable tenant quotas and hosted
+BYOK are not established. External deployment and private-data qualification remain
+unmeasured. The checklist records the evidence and qualifications for each claim.
+
 ## 9. Target topology: one spine, governed domain cells
+
+> For first-release scope, this framing is superseded by [owner intent](#owner-intent-2026-11-13-governs-first-release-scope).
 
 ### 9.1 Canonical public spine
 
@@ -377,6 +434,8 @@ Required boundaries:
 
 ### 11.1 Initial product
 
+> For first-release scope, this framing is superseded by [owner intent](#owner-intent-2026-11-13-governs-first-release-scope).
+
 The first public instance is a curated, read-only evidence and assertion
 library. It provides:
 
@@ -413,6 +472,8 @@ these zones as authority.
 
 ## 12. Contribution, promotion, correction, and removal
 
+> For first-release scope, this framing is superseded by [owner intent](#owner-intent-2026-11-13-governs-first-release-scope).
+
 ```text
 submit URL/file/packet
 → private workspace receipt
@@ -446,6 +507,8 @@ Rules:
   deletion SLA, and incident workflow are approved.
 
 ## 13. Roles and decision rights
+
+> For first-release scope, this framing is superseded by [owner intent](#owner-intent-2026-11-13-governs-first-release-scope).
 
 | Role | May | May not |
 | --- | --- | --- |
@@ -494,6 +557,8 @@ Minimum invariants:
 
 ## 15. BYOK and BYOM policy
 
+> For first-release scope, this framing is superseded by [owner intent](#owner-intent-2026-11-13-governs-first-release-scope).
+
 ### 15.1 Current truth
 
 The code has a job credential seam, but no production SDK runner, hosted tenant
@@ -518,6 +583,8 @@ and later qualification. Deterministic validation and human publication gates
 apply regardless of who supplies the model or key.
 
 ## 16. Economics and market validation
+
+> For first-release scope, this framing is superseded by [owner intent](#owner-intent-2026-11-13-governs-first-release-scope).
 
 ### 16.1 Planning economics
 
@@ -614,6 +681,8 @@ even if a relational/object store becomes the hot operational plane.
 
 ## 18. Staged release
 
+> For first-release scope, this framing is superseded by [owner intent](#owner-intent-2026-11-13-governs-first-release-scope).
+
 | Stage | Scope | Exit gate |
 | --- | --- | --- |
 | 1. Formal OSS release | Contribution/security policy, reproducible install, examples, versioning, tags/releases | Clean-room setup and deterministic demo verification |
@@ -646,6 +715,8 @@ Private instances may export bounded packets before federation, but a packet
 must not grant public eligibility or bypass the receiving node's policy.
 
 ## 20. Decisions required before promotion to PRD
+
+> For first-release scope, this framing is superseded by [owner intent](#owner-intent-2026-11-13-governs-first-release-scope).
 
 1. Select the first public domain and write its inclusion, evidence, freshness,
    reviewer, rights, and no-PHI policy.

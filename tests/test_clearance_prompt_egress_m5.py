@@ -39,6 +39,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
+from research_foundry.adapters.base import module_available
 from research_foundry.adapters.claude_agent_sdk import ClaudeAgentSDKAdapter, MockSDKClient
 from research_foundry.adapters.litellm_router import LiteLLMRouterAdapter
 from research_foundry.adapters.openai_agents import (
@@ -58,6 +59,19 @@ from research_foundry.services.agent_providers.openai_agents_provider import (
     OpenAIAgentsProvider,
 )
 from research_foundry.yamlio import dump_yaml, load_yaml
+
+
+def _skip_if_optional_sdk_installed(adapter: Any) -> None:
+    """Precondition guard (node_01M24QWV6W45KKDHNYFWEZTMZ7): these tests pin
+    the degraded (no-client, SDK-absent) branch; an interpreter that happens
+    to have the real SDK installed takes the real-mode branch instead."""
+
+    installed = [m for m in getattr(adapter, "requires", ()) if module_available(m)]
+    if installed:
+        pytest.skip(
+            f"precondition: optional dependency {installed} NOT installed -- "
+            "this test pins the degraded path"
+        )
 
 # A value that exists nowhere else in the repo, so finding it in a recorded
 # provider payload is unambiguous evidence it egressed.
@@ -415,6 +429,7 @@ def test_sdk_adapter_degraded_branch_refuses_and_does_not_echo_the_value(
     artifact) would hand the tainted text straight back to the caller."""
 
     adapter = adapter_factory()  # no client injected -> degraded path
+    _skip_if_optional_sdk_installed(adapter)
     assert adapter.available() is False
     request = _sdk_request(tmp_foundry, _source_record(stamp=_stamp("redistribution")))
     request["prompt"] = f"Summarise: {_TAINTED}"
@@ -435,6 +450,7 @@ def test_sdk_adapter_unstamped_degraded_run_is_unchanged(
     an unstamped request (the shape every current caller uses)."""
 
     adapter = adapter_factory()
+    _skip_if_optional_sdk_installed(adapter)
     result = adapter.run({"intent": "summarise X"})
     assert result.degraded is True
     assert result.artifacts
